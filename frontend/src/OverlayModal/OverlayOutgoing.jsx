@@ -631,214 +631,217 @@ function OverlayOutgoing({ isOpen, onClose, editingDoc, viewMode, editMode, onSu
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30">
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-slate-900/50 backdrop-blur-sm p-4 modal-backdrop">
       <div
         ref={popupRef}
-        className="w-[450px] max-w-full bg-white rounded-[30px] shadow-lg p-8 flex flex-col space-y-6 relative max-h-[90vh] overflow-y-auto"
+        className="modal-panel w-full max-w-[460px] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          className="absolute top-4 right-4 text-2xl text-black/50 hover:text-black/70 transition-colors cursor-pointer"
-          onClick={() => onClose(false)}
-        >
-          ×
-        </button>
-
-        <h2 className="text-xl font-bold text-sky-700 text-center">
-          {viewMode ? 'View Document' : editMode ? 'Edit Document' : 'Outgoing Record'}
-        </h2>
-
-        {/* Route */}
-        <div className="mb-6 relative">
-          <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">Routed To <span className="text-[#F54B4B]">*</span></label>
-          <select
-            name="route"
-            value={formData.route}
-            onChange={handleInputChange}
-            className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-              errors.route ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-            } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-              errors.route ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-            }`}
-            disabled={viewMode}
-            required
-          >
-            <option value="">Select Route</option>
-            <option value="Accounting_Unit">Accounting Unit</option>
-            <option value="ORD">ORD</option>
-            <option value="For_Compliance">For Compliance</option>
-          </select>
-          {errors.route && <p className="text-xs text-red-600 mt-1 px-2">{errors.route}</p>}
-        </div>
-
-        {/* DTS No */}
-        <div className="relative">
-          <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">DTS No. <span className="text-[#F54B4B]">*</span></label>
-          <input
-            type="text"
-            name="dtsNo"
-            value={formData.dtsNo}
-            onChange={handleInputChange}
-            placeholder="e.g. ORD1070"
-            className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-              errors.dtsNo ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-            } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-              errors.dtsNo ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-            } uppercase`}
-            onKeyPress={(e) => {
-              if (!/[a-zA-Z0-9]/.test(e.key)) e.preventDefault();
-            }}
-            disabled={viewMode}
-          />
-          {errors.dtsNo && <p className="text-xs text-red-600 mt-1 px-2">{errors.dtsNo}</p>}
-        </div>
-
-        {/* Document Type */}
-        <div className="relative">
-          <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">Document Type <span className="text-[#F54B4B]">*</span></label>
-          <select
-            className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-              errors.documentType ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-            } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-              errors.documentType ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-            }`}
-            value={selectedDocType}
-            onChange={handleDocTypeChange}
-            disabled={viewMode}
-          >
-            <option value="">Select Document Type</option>
-            {documentTypes.map((type) => (
-              <option key={type.documentid} value={type.documenttype}>
-                {type.documenttype}
-              </option>
-            ))}
-            <option value="Others">Others...</option>
-          </select>
-          {errors.documentType && <p className="text-xs text-red-600 mt-1 px-2">{errors.documentType}</p>}
-        </div>
-
-        {/* Custom Type */}
-        {showCustomDocType && (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Enter document type"
-                className={`text-xs flex-1 h-12 pl-5 pr-4 rounded-full border-2
-                  ${errors.customDocType ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'}
-                  focus:outline-none focus:ring-1
-                  ${errors.customDocType ? 'focus:ring-red-600' : 'focus:ring-[#004077]'}
-                `}
-                value={customDocType}
-                onChange={(e) => {
-                  setCustomDocType(e.target.value);
-                  setErrors((prev) => ({ ...prev, customDocType: '' }));
-                }}
-              />
-              <button
-                className="bg-green-600 hover:bg-green-700 text-white text-sm rounded-2xl px-4 py-2"
-                onClick={() => handleAddOrRemoveDocType('add')}
-              >
-                Add
-              </button>
-              <button
-                className="bg-red-600 hover:bg-red-700 text-white text-sm rounded-2xl px-4 py-2"
-                onClick={() => handleAddOrRemoveDocType('remove')}
-              >
-                Remove
-              </button>
-            </div>
-            {errors.customDocType && (
-              <p className="text-xs text-red-600 mt-1 px-2">{errors.customDocType}</p>
-            )}
+        {/* Header Bar */}
+        <div className="modal-header-bar crimson px-6 py-5 flex items-start justify-between flex-shrink-0">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-0.5">Outgoing Document</p>
+            <h2 className="text-lg font-extrabold text-white tracking-tight">
+              {viewMode ? 'View Document' : editMode ? 'Edit Document' : 'New Outgoing Record'}
+            </h2>
           </div>
-        )}
+          <button
+            onClick={() => onClose(false)}
+            className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer mt-0.5 flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-        {/* Date & Time Section */}
-        {(!editMode && !viewMode) && (
-          <div className="flex flex-col gap-4">
-            {/* Date Received (only when adding) */}
-            <div className="relative">
-              <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">Date Received <span className="text-[#F54B4B]">*</span></label>
-              <input
-                type="text"
-                name="datereleasedinput"
-                value={formData.datereleasedinput || ''}
-                onChange={handleInputChange}
-                placeholder="e.g. June 12, 2025 at 9:00 AM"
-                className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                  errors.datereleasedinput ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                } focus:outline-none focus:ring-1 ${
-                  errors.datereleasedinput ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                }`}
-                required
-              />
-              {errors.datereleasedinput && <p className="text-xs text-red-600 mt-1 px-2">{errors.datereleasedinput}</p>}
+        {/* Form Body */}
+        <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh] scrollbar-hide">
+          {/* Route */}
+          <div className="modal-field">
+            <label className="modal-label">Routed To <span className="req">*</span></label>
+            <select
+              name="route"
+              value={formData.route}
+              onChange={handleInputChange}
+              className={`modal-input modal-select ${errors.route ? 'error' : ''}`}
+              disabled={viewMode}
+              required
+            >
+              <option value="">Select Route</option>
+              <option value="Accounting_Unit">Accounting Unit</option>
+              <option value="ORD">ORD</option>
+              <option value="For_Compliance">For Compliance</option>
+            </select>
+            {errors.route && <p className="modal-error-msg">{errors.route}</p>}
+          </div>
+
+          {/* DTS No */}
+          <div className="modal-field">
+            <label className="modal-label">DTS No. <span className="req">*</span></label>
+            <input
+              type="text"
+              name="dtsNo"
+              value={formData.dtsNo}
+              onChange={handleInputChange}
+              placeholder="e.g. ORD1070"
+              className={`modal-input uppercase ${errors.dtsNo ? 'error' : ''}`}
+              onKeyPress={(e) => {
+                if (!/[a-zA-Z0-9]/.test(e.key)) e.preventDefault();
+              }}
+              disabled={viewMode}
+            />
+            {errors.dtsNo && <p className="modal-error-msg">{errors.dtsNo}</p>}
+          </div>
+
+          {/* Document Type */}
+          <div className="modal-field">
+            <label className="modal-label">Document Type <span className="req">*</span></label>
+            <select
+              className={`modal-input modal-select ${errors.documentType ? 'error' : ''}`}
+              value={selectedDocType}
+              onChange={handleDocTypeChange}
+              disabled={viewMode}
+            >
+              <option value="">Select Document Type</option>
+              {documentTypes.map((type) => (
+                <option key={type.documentid} value={type.documenttype}>
+                  {type.documenttype}
+                </option>
+              ))}
+              <option value="Others">Others...</option>
+            </select>
+            {errors.documentType && <p className="modal-error-msg">{errors.documentType}</p>}
+          </div>
+
+          {/* Custom Type */}
+          {showCustomDocType && !viewMode && (
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
+              <label className="modal-label">Custom Document Type</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Enter document type"
+                  className={`modal-input flex-1 !h-10 ${errors.customDocType ? 'error' : ''}`}
+                  value={customDocType}
+                  onChange={(e) => {
+                    setCustomDocType(e.target.value);
+                    setErrors((prev) => ({ ...prev, customDocType: '' }));
+                  }}
+                />
+                <button
+                  className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+                  onClick={() => handleAddOrRemoveDocType('add')}
+                >
+                  Add
+                </button>
+                <button
+                  className="h-10 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+                  onClick={() => handleAddOrRemoveDocType('remove')}
+                >
+                  Remove
+                </button>
+              </div>
+              {errors.customDocType && (
+                <p className="modal-error-msg">{errors.customDocType}</p>
+              )}
             </div>
-            {/* Date Released */}
-            <div className="relative">
-              <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">Date Released <span className="text-[#F54B4B]">*</span></label>
+          )}
+
+          {/* Date & Time Section */}
+          {(!editMode && !viewMode) && (
+            <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-4">
+              {/* Date Received */}
+              <div className="modal-field">
+                <label className="modal-label">Date Received <span className="req">*</span></label>
+                <input
+                  type="text"
+                  name="datereleasedinput"
+                  value={formData.datereleasedinput || ''}
+                  onChange={handleInputChange}
+                  placeholder="e.g. June 12, 2025 at 9:00 AM"
+                  className={`modal-input ${errors.datereleasedinput ? 'error' : ''}`}
+                  required
+                />
+                {errors.datereleasedinput && <p className="modal-error-msg">{errors.datereleasedinput}</p>}
+              </div>
+              {/* Date Released */}
+              <div className="modal-field">
+                <label className="modal-label">Date Released <span className="req">*</span></label>
+                <input
+                  type="date"
+                  name="date"
+                  value={formData.date ? formData.date.slice(0, 10) : ''}
+                  onChange={handleInputChange}
+                  className={`modal-input ${errors.date ? 'error' : ''}`}
+                  disabled={viewMode}
+                  required
+                />
+                {errors.date && <p className="modal-error-msg">{errors.date}</p>}
+              </div>
+            </div>
+          )}
+          
+          {(editMode || viewMode) && (
+            <div className="modal-field">
+              <label className="modal-label">Date Released <span className="req">*</span></label>
               <input
                 type="date"
                 name="date"
                 value={formData.date ? formData.date.slice(0, 10) : ''}
                 onChange={handleInputChange}
-                className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                  errors.date ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                } focus:outline-none focus:ring-1 ${
-                  errors.date ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                }`}
+                className={`modal-input ${errors.date ? 'error' : ''}`}
                 disabled={viewMode}
                 required
               />
-              {errors.date && <p className="text-xs text-red-600 mt-1 px-2">{errors.date}</p>}
+              {errors.date && <p className="modal-error-msg">{errors.date}</p>}
             </div>
-          </div>
-        )}
-        {(editMode || viewMode) && (
-          <div className="relative mb-4">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">Date Released <span className="text-[#F54B4B]">*</span></label>
-            <input
-              type="date"
-              name="date"
-              value={formData.date ? formData.date.slice(0, 10) : ''}
-              onChange={handleInputChange}
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.date ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } focus:outline-none focus:ring-1 ${
-                errors.date ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              }`}
-              disabled={viewMode}
-              required
-            />
-            {errors.date && <p className="text-xs text-red-600 mt-1 px-2">{errors.date}</p>}
-          </div>
-        )}
+          )}
 
-        {/* Remarks */}
-        <div className="relative">
-          <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold">Remarks</label>
-          <textarea
-            name="remarks"
-            value={formData.remarks}
-            onChange={handleInputChange}
-            placeholder="Enter Remarks"
-            className="text-xs w-full h-24 rounded-[20px] border-2 px-5 py-3 border-sky-700 text-sky-950 placeholder:text-sky-700/70 focus:border-[#004077] focus:outline-none focus:ring-1 focus:ring-[#004077]"
-          />
+          {/* Remarks */}
+          <div className="modal-field">
+            <label className="modal-label">Remarks</label>
+            {viewMode ? (
+              <div className="modal-textarea !h-auto min-h-[5.5rem] bg-slate-50 border-slate-200">
+                {formData.remarks || '-'}
+              </div>
+            ) : (
+              <textarea
+                name="remarks"
+                value={formData.remarks}
+                onChange={handleInputChange}
+                placeholder="Enter Remarks"
+                className="modal-textarea"
+              />
+            )}
+          </div>
         </div>
 
-        {!viewMode && (
-          <div className="flex justify-end pt-2">
+        {/* Footer */}
+        <div className="px-6 py-4 bg-slate-50/60 border-t border-slate-100 flex items-center justify-end gap-3 flex-shrink-0">
+          <button className="modal-cancel-btn" onClick={() => onClose(false)}>
+            {viewMode ? 'Close' : 'Cancel'}
+          </button>
+          {!viewMode && (
             <button
-              className="bg-sky-700 hover:bg-sky-800 text-white text-sm font-medium rounded-2xl px-6 py-2 cursor-pointer"
+              className="modal-submit-btn !bg-none"
+              style={{ background: 'linear-gradient(135deg, var(--color-dost-crimson) 0%, var(--color-dost-crimson-dark) 100%)', boxShadow: '0 4px 12px rgba(194,24,91,.25)' }}
               onClick={handleSubmit}
               disabled={isSubmitting}
               type="button"
             >
-              {isSubmitting ? 'Saving...' : editMode ? 'Save Changes' : 'Submit'}
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Saving...
+                </>
+              ) : editMode ? 'Save Changes' : 'Submit Record'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

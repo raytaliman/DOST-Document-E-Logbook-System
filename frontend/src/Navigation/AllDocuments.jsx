@@ -4,9 +4,10 @@ import OverlayOutgoing from '../OverlayModal/OverlayOutgoing';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import Swal from 'sweetalert2';
-import '../index.css'
 import { io } from 'socket.io-client';
 import moment from 'moment';
+import { FiSearch, FiChevronDown, FiPlus, FiDownload, FiEye, FiEdit2, FiArchive } from 'react-icons/fi';
+import '../index.css';
 
 function AllDocs() {
   const [documents, setDocuments] = useState([]);
@@ -21,6 +22,16 @@ function AllDocs() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [isViewMode, setIsViewMode] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [columnFilters, setColumnFilters] = useState({
+    dateSent: '',
+    dtsNo: '',
+    direction: '',
+    docType: '',
+    timeReceived: '',
+    dateReleased: '',
+    route: '',
+    remarks: ''
+  });
   const API_URL = import.meta.env.VITE_API_URL;
   const months = ['All', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const currentYear = new Date().getFullYear();
@@ -63,7 +74,7 @@ function AllDocs() {
       setLoading(false);
       Swal.fire({
         icon: 'error',
-        title: 'Failed to load documents',
+        title: 'Failed to Load Documents',
         text: 'Please try again.',
         timer: 2500,
         showConfirmButton: false,
@@ -105,12 +116,10 @@ function AllDocs() {
     setIsViewMode(true);
     setIsEditMode(false);
     
-    // Show modal based on document's direction
     if (doc.documentDirection === 'incoming') {
         setShowIncomingModal(true);
         setShowOutgoingModal(false);
     } else {
-        // Default to outgoing if not incoming
         setShowOutgoingModal(true);
         setShowIncomingModal(false);
     }
@@ -131,7 +140,7 @@ function AllDocs() {
       documentid: doc.id,
       dtsno: doc.dtsNo,
       documenttype: doc.documentType,
-      documentdirection: adminDirection || 'outgoing', // Force to admin's direction (default to outgoing)
+      documentdirection: adminDirection || 'outgoing', 
       route: doc.route,
       remarks: doc.remarks,
       datereleased: doc.dateReceive,
@@ -141,7 +150,6 @@ function AllDocs() {
     setIsViewMode(false);
     setIsEditMode(true);
     
-    // Force modal based on admin's direction
     if (adminDirection === 'incoming') {
       setShowIncomingModal(true);
       setShowOutgoingModal(false);
@@ -161,11 +169,9 @@ function AllDocs() {
       const admin = JSON.parse(adminData);
       const userType = (admin.usertype || '').toLowerCase();
 
-      // If ITSM user is logged in, always tag as ITSM
       if (userType.includes('itsm')) {
         archiveBy = 'ITSM';
       }
-      // If an Admin / SuperAdmin user is logged in, determine based on the document's direction
       else if (userType.includes('admin')) {
         const adminDir = (admin.documentdirection || '').toLowerCase();
         if (adminDir === 'incoming') {
@@ -181,9 +187,8 @@ function AllDocs() {
       text: 'Do you want to archive this document?',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
       confirmButtonText: 'Yes, archive it!',
+      cancelButtonText: 'Cancel',
       customClass: {
         popup: 'swal2-minimalist'
       }
@@ -221,7 +226,7 @@ function AllDocs() {
         const error = await response.json();
         Swal.fire({
           icon: 'error',
-          title: 'Failed to archive',
+          title: 'Failed to Archive',
           text: error.message || 'Failed to archive document. Please try again.',
           timer: 2500,
           showConfirmButton: false,
@@ -246,7 +251,6 @@ function AllDocs() {
     }
   };
 
-  // Handler to update time in backend and UI
   const handleTimeChange = async (docId, newTime) => {
     setUpdatingTimeId(docId);
     try {
@@ -256,13 +260,10 @@ function AllDocs() {
         body: JSON.stringify({ time: newTime })
       });
       
-      
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to update time');
       }
-      
-      const result = await response.json();
       
       setDocuments(prevDocs =>
         prevDocs.map(doc =>
@@ -272,7 +273,7 @@ function AllDocs() {
       
       Swal.fire({
         icon: 'success',
-        title: 'Time updated',
+        title: 'Time Updated',
         text: 'Time Received has been updated.',
         timer: 1200,
         showConfirmButton: false,
@@ -281,7 +282,7 @@ function AllDocs() {
     } catch (error) {
       Swal.fire({
         icon: 'error',
-        title: 'Failed to update',
+        title: 'Failed to Update',
         text: error.message || 'Failed to update time.',
         timer: 2000,
         showConfirmButton: false,
@@ -292,10 +293,8 @@ function AllDocs() {
     }
   };
 
-  // Filter documents based on selected filters
   const filteredDocuments = documents.filter(doc => {
     const docDate = new Date(doc.dateSent);
-    // Search should match DTS No, Document Type, Route, Time, or Document Direction
     const search = searchTerm.toLowerCase();
     const docType = doc.documentType?.toLowerCase().replace(/_/g, ' ');
     const route = doc.route?.toLowerCase().replace(/_/g, ' ');
@@ -312,18 +311,25 @@ function AllDocs() {
       docDate.toLocaleString('en-US', { month: 'long' }) === selectedMonth;
     const matchesYear = selectedYear === 'All' || docDate.getFullYear() === selectedYear;
 
-    return matchesSearch && matchesMonth && matchesYear;
+    const matchesColumnFilters = 
+      (columnFilters.dateSent === '' || (doc.dateSent ? moment(doc.dateSent).format('MMMM D, YYYY [at] h:mm A').toLowerCase().includes(columnFilters.dateSent.toLowerCase()) : false)) &&
+      (columnFilters.dtsNo === '' || (doc.dtsNo || '').toLowerCase().includes(columnFilters.dtsNo.toLowerCase())) &&
+      (columnFilters.direction === '' || (doc.documentDirection || '').toLowerCase().includes(columnFilters.direction.toLowerCase())) &&
+      (columnFilters.docType === '' || (docType || '').includes(columnFilters.docType.toLowerCase())) &&
+      (columnFilters.timeReceived === '' || (time || '').includes(columnFilters.timeReceived.toLowerCase())) &&
+      (columnFilters.dateReleased === '' || (doc.dateReceive ? moment(doc.dateReceive).format('MMMM D, YYYY [at] h:mm A').toLowerCase().includes(columnFilters.dateReleased.toLowerCase()) : false) || (doc.dateReceive === '-' && columnFilters.dateReleased === '-')) &&
+      (columnFilters.route === '' || (route || '').includes(columnFilters.route.toLowerCase())) &&
+      (columnFilters.remarks === '' || (doc.remarks || '').toLowerCase().includes(columnFilters.remarks.toLowerCase()));
+
+    return matchesSearch && matchesMonth && matchesYear && matchesColumnFilters;
   });
 
-  // Helper functions
   const formatDate = (dateString) => {
     if (!dateString || dateString === '-') return '-';
-    
     try {
       const date = moment(dateString);
       return date.isValid() ? date.format('MMMM D, YYYY [at] h:mm A') : '-';
     } catch (e) {
-      console.error('Error formatting date:', e);
       return '-';
     }
   };
@@ -343,26 +349,7 @@ function AllDocs() {
     return `${month} ${day}, ${year} at ${hours}:${minutes} ${ampm}`;
   }
 
-  const getDirectionStyle = (direction) => {
-    switch (direction) {
-      case 'Incoming': return 'bg-[#4B698B] text-white';
-      case 'Outgoing': return 'bg-[#123052] text-white';
-      default: return 'bg-gray-200 text-gray-800';
-    }
-  };
-
-  const getRouteStyle = (route) => {
-    switch (route) {
-      case 'ORD': return 'text-black';
-      case 'Accounting Unit': return 'text-black';
-      case 'For Compliance': return 'text-[#DC3545]';
-      default: return 'text-gray-800';
-    }
-  };
-
-  // Excel Export Function
   const handleExportToExcel = async () => {
-    // Only filter by selectedMonth and selectedYear for export
     const exportDocuments = documents.filter(doc => {
       const docDate = new Date(doc.dateSent);
       const matchesMonth =
@@ -375,7 +362,7 @@ function AllDocs() {
     if (exportDocuments.length === 0) {
       Swal.fire({
         icon: 'info',
-        title: 'No data to export',
+        title: 'No Data to Export',
         text: 'There are no documents to export.',
         timer: 1800,
         showConfirmButton: false,
@@ -387,7 +374,6 @@ function AllDocs() {
     }
 
     const workbook = new ExcelJS.Workbook();
-    // Create a descriptive worksheet name based on filters
     let sheetName = '';
     if (selectedMonth !== 'All' || selectedYear !== 'All') {
       const monthYear = [];
@@ -398,7 +384,7 @@ function AllDocs() {
     if (sheetName.length > 31) {
       sheetName = sheetName.substring(0, 28) + '...';
     }
-    const worksheet = workbook.addWorksheet(sheetName);
+    const worksheet = workbook.addWorksheet(sheetName || 'Documents');
 
     const headers = [
       'Date Sent', 'Date Released', 'Time Received', 'DTS No.', 'Document Status',
@@ -406,7 +392,6 @@ function AllDocs() {
     ];
     worksheet.addRow(headers);
 
-    // Style header row
     const headerRow = worksheet.getRow(1);
     headerRow.eachCell(cell => {
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13, name: 'Arial' };
@@ -429,7 +414,6 @@ function AllDocs() {
     });
     headerRow.height = 30;
 
-    // Add and style data rows
     exportDocuments.slice().reverse().forEach((doc) => {
       const rowValues = [
         formatDate(doc.dateSent),
@@ -456,7 +440,7 @@ function AllDocs() {
           bottom: { style: 'thin', color: { argb: 'D3D3D3' } },
           right: { style: 'thin', color: { argb: 'D3D3D3' } }
         };
-        // DTS No. cell (col 4)
+        
         if (colNumber === 4) {
           cell.font = {
             name: 'Arial',
@@ -501,7 +485,6 @@ function AllDocs() {
       row.height = 25;
     });
 
-    // Add note at the bottom
     const currentDate = new Date();
     const dateStr = currentDate.toLocaleDateString('en-US', {
       month: 'long',
@@ -514,20 +497,16 @@ function AllDocs() {
       hour12: true
     });
     
-    // Add 3 empty rows for spacing above the note
     for (let i = 0; i < 3; i++) {
       const spacingRow = worksheet.addRow(['', '', '', '', '', '', '', '']);
       spacingRow.height = 15;
     }
     
-    // Add note row
     const noteRow = worksheet.addRow(['', '', '', '', '', '', '', '']);
     noteRow.height = 20;
     
-    // Merge cells for the note (span all 8 columns)
     worksheet.mergeCells(`A${noteRow.number}:H${noteRow.number}`);
     
-    // Get the merged cell and set its value and style
     const noteCell = worksheet.getCell(`A${noteRow.number}`);
     noteCell.value = `Note: This is a system-generated file. Generated on: ${dateStr} ${timeStr}`;
     noteCell.font = { 
@@ -561,24 +540,17 @@ function AllDocs() {
     saveAs(new Blob([buffer]), fileName);
   };
 
-  // Components
+  // Dropdown Component Helpers
   const DropdownButton = ({ label, value, onClick, isOpen }) => (
-    <div className="relative w-32">
+    <div className="relative w-36">
       <button
         onClick={onClick}
-        className={`h-11 bg-sky-700/95 ${
-          isOpen ? 'rounded-t-lg border-b-0' : 'rounded-2xl'
-        } shadow-sm flex items-center justify-between px-4 text-white font-semibold text-xl cursor-pointer hover:bg-sky-700 transition-colors w-full border`}
+        className={`h-10 bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 ${
+          isOpen ? 'rounded-t-xl border-b-0 shadow-lg' : 'rounded-xl'
+        } shadow-2xs flex items-center justify-between px-4 font-bold text-xs cursor-pointer transition-all duration-200 w-full`}
       >
-        {value}
-        <svg 
-          className={`w-4 h-4 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          fill="none" 
-          viewBox="0 0 24 24" 
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <span className="truncate">{value}</span>
+        <FiChevronDown className={`w-3.5 h-3.5 ml-2 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-slate-600' : ''}`} />
       </button>
     </div>
   );
@@ -586,310 +558,360 @@ function AllDocs() {
   const DropdownMenu = ({ items, onSelect, isOpen, className }) => (
     isOpen && (
       <div
-        className={`absolute top-full left-0 z-30 w-full bg-white rounded-b-lg shadow-md border border-t-0 ${className}`}
+        className={`absolute top-[98%] left-0 z-30 w-full bg-white rounded-b-xl shadow-lg border border-slate-200/60 overflow-hidden py-1 divide-y divide-slate-100 ${className}`}
       >
         {items.map((item, index) => (
-          <div
+          <button
             key={index}
-            className="px-4 py-2 text-sm text-gray-700 hover:bg-sky-100 cursor-pointer"
+            className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
             onClick={() => onSelect(item)}
           >
             {item}
-          </div>
+          </button>
         ))}
       </div>
     )
   );
 
   return (
-    <div className="p-1 relative">
-      {/* Header with search and filters */}
-      <div className="flex flex-wrap justify-end gap-x-2 mb-4">
-        {/* Search */}
-        <div className="flex flex-col items-start">
-          <div className="relative w-80 h-11 bg-neutral-100 rounded-2xl shadow-sm border border-sky-700 flex items-center px-4">
+    <div className="p-2 space-y-6">
+      {/* Header Panel with Title and Controls */}
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight font-display">All Documents</h1>
+          <p className="text-xs text-slate-400 mt-0.5 font-medium">Monitor, log, and route physical documents in real-time</p>
+        </div>
+
+        {/* Controls Layout */}
+        <div className="flex flex-wrap items-center gap-3">
+          
+          {/* Search bar */}
+          <div className="relative w-64 h-10 bg-white border border-slate-200/80 rounded-xl shadow-2xs flex items-center px-3.5 focus-within:border-[#0b4c95] focus-within:ring-4 focus-within:ring-sky-500/10 transition-all duration-200">
+            <FiSearch className="text-slate-400 w-4 h-4 mr-2 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Search Records..."
-              className="w-full bg-transparent outline-none text-sky-950 text-sm"
+              placeholder="Search documents..."
+              className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-xs font-semibold"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <img src="./searchIcon.svg" alt="Search" className="w-5 h-5" />
           </div>
-        </div>
 
-        {/* Month Dropdown */}
-        <div className="flex flex-col items-start relative">
-          <DropdownButton 
-            label="Month" 
-            value={selectedMonth} 
-            onClick={() => setShowMonthDropdown(!showMonthDropdown)}
-            isOpen={showMonthDropdown}
-          />
-          <DropdownMenu
-            items={months}
-            onSelect={(month) => {
-              setSelectedMonth(month);
-              setShowMonthDropdown(false);
-            }}
-            isOpen={showMonthDropdown}
-          />
-        </div>
+          {/* Month Dropdown */}
+          <div className="relative">
+            <DropdownButton 
+              value={selectedMonth} 
+              onClick={() => {
+                setShowMonthDropdown(!showMonthDropdown);
+                setShowYearDropdown(false);
+              }}
+              isOpen={showMonthDropdown}
+            />
+            <DropdownMenu
+              items={months}
+              onSelect={(month) => {
+                setSelectedMonth(month);
+                setShowMonthDropdown(false);
+              }}
+              isOpen={showMonthDropdown}
+            />
+          </div>
 
-        {/* Year Dropdown */}
-        <div className="flex flex-col items-start relative">
-          <DropdownButton 
-            label="Year" 
-            value={selectedYear} 
-            onClick={() => setShowYearDropdown(!showYearDropdown)}
-            isOpen={showYearDropdown}
-          />
-          <DropdownMenu
-            items={years}
-            onSelect={(year) => {
-              setSelectedYear(year);
-              setShowYearDropdown(false);
-            }}
-            isOpen={showYearDropdown}
-          />
-        </div>
+          {/* Year Dropdown */}
+          <div className="relative">
+            <DropdownButton 
+              value={selectedYear} 
+              onClick={() => {
+                setShowYearDropdown(!showYearDropdown);
+                setShowMonthDropdown(false);
+              }}
+              isOpen={showYearDropdown}
+            />
+            <DropdownMenu
+              items={years.map(String)}
+              onSelect={(year) => {
+                setSelectedYear(Number(year));
+                setShowYearDropdown(false);
+              }}
+              isOpen={showYearDropdown}
+            />
+          </div>
 
-        {/* Export to Excel Button */}
-        <div className="flex flex-col items-start">
+          {/* Export to Excel */}
           <button
             onClick={handleExportToExcel}
-            className="h-11 bg-sky-700 rounded-2xl shadow-sm flex items-center justify-center px-3.5 text-white text-sm cursor-pointer transition-colors w-11 hover:bg-[#1460A2]"
-            title="Export to Excel"
+            className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all duration-200 cursor-pointer flex items-center gap-1.5"
+            title="Export filtered records to Excel"
           >
-            <img src="/excelIcon.svg" alt="Excel Icon" className='w-15 h-15' />
+            <FiDownload className="w-4 h-4" />
+            <span>Export</span>
           </button>
-        </div>
 
-        {/* Add Record Button(s) */}
-        <div className="flex flex-col items-start">
-          {adminDirection === 'incoming' ? (
-            <button
-              onClick={() => setShowIncomingModal(true)}
-              className="h-11 bg-sky-700 rounded-2xl shadow-sm flex items-center justify-center px-4 text-white font-semibold text-[16px] cursor-pointer transition-colors w-45 hover:bg-[#1460A2]"
-            >
-              Add Incoming
-              <svg 
-                className="w-4 h-4 ml-2"
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          ) : adminDirection === 'outgoing' ? (
-            <button
-              onClick={() => setShowOutgoingModal(true)}
-              className="h-11 bg-sky-700 rounded-2xl shadow-sm flex items-center justify-center px-4 text-white font-semibold text-[16px] cursor-pointer transition-colors w-45 hover:bg-[#1460A2]"
-            >
-              Add Outgoing
-              <svg 
-                className="w-4 h-4 ml-2"
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          ) : (
-            <div className="flex gap-x-2">
+          {/* Dynamic Add Buttons */}
+          <div className="flex gap-2">
+            {(adminDirection === 'incoming' || !adminDirection || adminUserType === 'admin' || adminUserType === 'superadmin') && (
               <button
                 onClick={() => setShowIncomingModal(true)}
-                className="h-11 bg-sky-700 rounded-2xl shadow-sm flex items-center justify-center px-4 text-white font-semibold text-[16px] cursor-pointer transition-colors w-45 hover:bg-[#1460A2]"
+                className="h-10 px-4 btn-dost-blue font-bold text-xs rounded-xl shadow-md shadow-sky-900/10 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex items-center gap-1.5"
               >
-                Add Incoming
-                <svg 
-                  className="w-4 h-4 ml-2"
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                <FiPlus className="w-4 h-4" />
+                <span>Add Incoming</span>
               </button>
+            )}
+            {(adminDirection === 'outgoing' || !adminDirection) && (
               <button
                 onClick={() => setShowOutgoingModal(true)}
-                className="h-11 bg-sky-700 rounded-2xl shadow-sm flex items-center justify-center px-4 text-white font-semibold text-[16px] cursor-pointer transition-colors w-45 hover:bg-[#1460A2]"
+                className="h-10 px-4 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs rounded-xl shadow-md shadow-pink-900/10 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex items-center gap-1.5"
               >
-                Add Outgoing
-                <svg 
-                  className="w-4 h-4 ml-2"
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                <FiPlus className="w-4 h-4" />
+                <span>Add Outgoing</span>
               </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto">
-        {/* Table Container */}
-        <div className="min-w-[1200px]">
-          {/* Table Header */}
-          <div className="bg-sky-700 h-15 flex items-center rounded-lg px-2 text-white font-bold text-sm sticky top-0 z-10">
-            <div className="w-[10%] min-w-[100px] px-2 text-center">
-              {(() => {
-                const adminData = localStorage.getItem('admin');
-                if (adminData) {
-                  const admin = JSON.parse(adminData);
-                  return admin.documentdirection === 'incoming' ? 'DATE SENT' : 'DATE RECEIVED';
-                }
-                return 'DATE SENT';
-              })()}
-            </div>
-            <div className="w-[10%] min-w-[100px] px-2 text-center">DTS NO.</div>
-            <div className="w-[12%] min-w-[120px] px-2 text-center">DOCUMENT STATUS</div>
-            <div className="w-[18%] min-w-[150px] px-2 text-center">DOCUMENT TYPE</div>
-            <div className="w-[12%] min-w-[120px] px-2 text-center">TIME RECEIVED</div>
-            <div className="w-[10%] min-w-[100px] px-2 text-center">DATE RELEASED</div>
-            <div className="w-[14%] min-w-[120px] px-2 text-center">ROUTED TO</div>
-            <div className="w-[10%] min-w-[120px] px-2 text-center">REMARKS</div>
-            <div className="w-[12%] min-w-[120px] flex justify-center px-2 text-center">ACTIONS</div>
-          </div>
-
-          {/* Table Body */}
-          <div
-            className="w-full flex-1 overflow-y-auto scrollbar-hide"
-            style={{ minHeight: 0, maxHeight: 'calc(100vh - 260px)' }} 
-          >
-            {loading ? (
-              <div className="flex justify-center items-center h-32 border-b border-gray-200 min-w-[1200px]">
-                <p className="text-gray-500">Loading documents...</p>
-              </div>
-            ) : filteredDocuments.length > 0 ? (
-              filteredDocuments.map((doc) => (
-                <div key={doc.id} className="min-w-[1200px] px-2 h-16 flex items-center hover:bg-sky-50 border-b border-[#1460A2]/50">
-                  {/* Date Sent/Received */}
-                  <div className="w-[10%] min-w-[100px] px-2 text-gray-500 text-center text-sm">
-                    {formatDate(doc.dateSent)}
-                  </div>
-                  {/* DTS Number */}
-                  <div className="w-[10%] min-w-[100px] px-2 text-black text-center font-bold text-sm">
-                    {doc.dtsNo}
-                  </div>
-                  {/* Document Status */}
-                  <div className="w-[12%] min-w-[120px] px-2 text-center">
-                    <span className={`inline-block px-6 py-1.5 rounded-full text-sm font-bold ${getDirectionStyle(doc.documentDirection.charAt(0).toUpperCase() + doc.documentDirection.slice(1))}`}>
-                      {doc.documentDirection.charAt(0).toUpperCase() + doc.documentDirection.slice(1)}
-                    </span>
-                  </div>
-                  {/* Document Type */}
-                  <div className="w-[18%] min-w-[150px] px-2 text-black text-center text-sm truncate">
-                    {doc.documentType?.trim() || '-'}
-                  </div>
-                  {/* Time Received */}
-                  <div className="w-[12%] min-w-[120px] px-2 text-center">
-                    <select
-                      value={doc.time === '-' ? '' : doc.time}
-                      onChange={e => handleTimeChange(doc.id, e.target.value)}
-                      disabled={
-                        archivingId === doc.id ||
-                        updatingTimeId === doc.id ||
-                        doc.archiveStatus ||
-                        !(
-                          (adminDirection === 'outgoing') ||
-                          (adminUserType === 'superadmin')
-                        )
-                      }
-                      className={`inline-block px-4 py-2 text-black text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sky-700 ${updatingTimeId === doc.id ? 'opacity-60' : ''}`}
-                      style={{ minWidth: '80px' }}
-                    >
-                      <option value="">-</option>
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                      <option value="PM_Late">PM Late</option>
-                    </select>
-                    {updatingTimeId === doc.id && (
-                      <span className="ml-2 animate-spin inline-block align-middle">⏳</span>
-                    )}
-                  </div>
-                  {/* Date Released */}
-                  <div className="w-[10%] min-w-[100px] px-2 text-gray-500 text-center text-sm">
-                      {doc.dateReceive || '-'}
-                  </div>
-                  {/* Route */}
-                  <div className="w-[14%] min-w-[120px] px-2 text-center">
-                    <span className={`inline-block px-4 py-2 text-sm ${getRouteStyle(doc.route?.replace('_', ' ') || '-')}`}>
-                      {doc.route?.replace('_', ' ') || '-'}
-                    </span>
-                  </div>
-                  {/* Remarks */}
-                  <div className="w-[10%] min-w-[120px] px-2 text-black text-center text-sm truncate">
-                    {doc.remarks || '-'}
-                  </div>
-                  {/* Actions */}
-                  <div className="w-[12%] min-w-[120px] px-2 flex justify-center space-x-1">
-                    <button 
-                      onClick={() => handleView(doc)}
-                      className="p-2 bg-[#45A3F5] text-white rounded-lg hover:bg-[#1E87DC] transition-colors cursor-pointer"
-                      title="View"
-                    >
-                      <img src="/viewIcon.svg" alt="View" className="w-3 h-3" />
-                    </button>
-                    <button 
-                      onClick={() => handleEdit(doc)}
-                      className="p-2 bg-[#28A745] text-white rounded-lg hover:bg-[#218838] transition-colors cursor-pointer"
-                      title="Edit"
-                    >
-                      <img src="/editIcon.svg" alt="Edit" className="w-3 h-3" />
-                    </button>
-                    <button 
-                      onClick={() => handleArchive(doc.id)}
-                      className={
-                        `p-2 bg-[#FF9500] text-white rounded-lg transition-colors cursor-pointer 
-                        ${archivingId === doc.id ? 'pointer-events-none' : ''} 
-                        ${
-                          (adminDirection === 'incoming' && doc.documentDirection.toLowerCase() !== 'incoming') ||
-                          (adminDirection === 'outgoing' && doc.documentDirection.toLowerCase() !== 'outgoing')
-                            ? 'opacity-50 pointer-events-none'
-                            : 'hover:bg-[#CC7A00]'
-                        }`
-                      }
-                      title="Archive"
-                      disabled={
-                        archivingId === doc.id ||
-                        (adminDirection === 'incoming' && doc.documentDirection.toLowerCase() !== 'incoming') ||
-                        (adminDirection === 'outgoing' && doc.documentDirection.toLowerCase() !== 'outgoing')
-                      }
-                      tabIndex={-1}
-                    >
-                      {archivingId === doc.id ? (
-                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4" fill="none"/>
-                          <path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8v8z"/>
-                        </svg>
-                      ) : (
-                        <img src="/archiveIcon.svg" alt="Archive" className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center text-gray-500 py-12">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-lg font-medium text-gray-600">No Documents Found</p>
-              </div>
             )}
           </div>
+
         </div>
       </div>
 
-      {/* Modals */}
+      {/* Main Table Container */}
+      <div className="table-container-premium shadow-2xs">
+        <div className="overflow-x-auto">
+          <table className="table-premium w-full text-left border-collapse">
+            <thead>
+              {(() => {
+                const uniqueValues = {
+                  dateSent: [...new Set(documents.map(d => formatDate(d.dateSent)))].filter(v => v !== '-').sort(),
+                  dtsNo: [...new Set(documents.map(d => d.dtsNo))].filter(Boolean).sort(),
+                  direction: [...new Set(documents.map(d => d.documentDirection))].filter(Boolean).sort(),
+                  docType: [...new Set(documents.map(d => d.documentType))].filter(Boolean).sort(),
+                  timeReceived: [...new Set(documents.map(d => d.time))].filter(v => v && v !== '-').sort(),
+                  dateReleased: [...new Set(documents.map(d => formatDate(d.dateReceive)))].filter(v => v !== '-').sort(),
+                  route: [...new Set(documents.map(d => d.route))].filter(v => v && v !== '-').sort(),
+                  remarks: [...new Set(documents.map(d => d.remarks))].filter(v => v && v !== '-').sort()
+                };
+
+                const selectClass = "text-[10px] w-full p-1.5 border border-slate-200/80 rounded shadow-2xs font-normal text-slate-600 focus:outline-none focus:border-sky-500 bg-white cursor-pointer";
+
+                return (
+                  <tr>
+                    <th className="w-[12%] text-center align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>{adminDirection === 'incoming' ? 'Date Sent' : 'Date Received'}</span>
+                        <select className={selectClass} value={columnFilters.dateSent} onChange={(e) => setColumnFilters({...columnFilters, dateSent: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.dateSent.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[10%] text-center align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>DTS No.</span>
+                        <select className={selectClass} value={columnFilters.dtsNo} onChange={(e) => setColumnFilters({...columnFilters, dtsNo: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.dtsNo.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[12%] text-center align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Direction</span>
+                        <select className={selectClass} value={columnFilters.direction} onChange={(e) => setColumnFilters({...columnFilters, direction: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.direction.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[16%] align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Document Type</span>
+                        <select className={selectClass} value={columnFilters.docType} onChange={(e) => setColumnFilters({...columnFilters, docType: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.docType.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[12%] text-center align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Time Received</span>
+                        <select className={selectClass} value={columnFilters.timeReceived} onChange={(e) => setColumnFilters({...columnFilters, timeReceived: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.timeReceived.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[12%] text-center align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Date Released</span>
+                        <select className={selectClass} value={columnFilters.dateReleased} onChange={(e) => setColumnFilters({...columnFilters, dateReleased: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.dateReleased.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[12%] align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Routed To</span>
+                        <select className={selectClass} value={columnFilters.route} onChange={(e) => setColumnFilters({...columnFilters, route: e.target.value})}>
+                          <option value="">All</option>
+                          {uniqueValues.route.map((val, i) => <option key={i} value={val}>{val}</option>)}
+                        </select>
+                      </div>
+                    </th>
+                    <th className="w-[12%] align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Remarks</span>
+                        <div className="h-[26px]"></div>
+                      </div>
+                    </th>
+                    <th className="w-[10%] text-center align-top pt-3">
+                      <div className="flex flex-col gap-2">
+                        <span>Actions</span>
+                        <div className="h-[26px]"></div>
+                      </div>
+                    </th>
+                  </tr>
+                );
+              })()}
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="9" className="text-center py-10 text-slate-400 font-semibold">
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5 text-[#0b4c95]" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Loading documents...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredDocuments.length > 0 ? (
+                filteredDocuments.map((doc) => {
+                  const direction = doc.documentDirection.toLowerCase();
+                  let directionBadgeClass = "bg-slate-50 text-slate-600 border-slate-200";
+                  if (direction === 'incoming') {
+                    directionBadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200/50";
+                  } else if (direction === 'outgoing') {
+                    directionBadgeClass = "bg-pink-50 text-pink-700 border-pink-200/50";
+                  }
+
+                  const isArchiveDisabled = 
+                    (adminDirection === 'incoming' && direction !== 'incoming') ||
+                    (adminDirection === 'outgoing' && direction !== 'outgoing');
+
+                  const isTimeSelectDisabled =
+                    archivingId === doc.id ||
+                    updatingTimeId === doc.id ||
+                    doc.archiveStatus ||
+                    !(
+                      (adminDirection === 'outgoing') ||
+                      (adminUserType === 'superadmin')
+                    );
+
+                  return (
+                    <tr key={doc.id}>
+                      <td className="text-center font-medium text-slate-500 text-xs">
+                        {formatDate(doc.dateSent)}
+                      </td>
+                      <td className="text-center font-extrabold text-slate-800 text-xs">
+                        {doc.dtsNo}
+                      </td>
+                      <td className="text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${directionBadgeClass}`}>
+                          {doc.documentDirection}
+                        </span>
+                      </td>
+                      <td className="font-semibold text-slate-700 text-xs max-w-[150px] truncate" title={doc.documentType}>
+                        {doc.documentType}
+                      </td>
+                      <td className="text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <select
+                            value={doc.time === '-' ? '' : doc.time}
+                            onChange={e => handleTimeChange(doc.id, e.target.value)}
+                            disabled={isTimeSelectDisabled}
+                            className={`h-8 w-24 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 px-2 outline-none transition-all duration-200 focus:border-[#0b4c95] focus:ring-2 focus:ring-sky-500/10 ${
+                              isTimeSelectDisabled ? 'bg-slate-50/50 text-slate-400 cursor-not-allowed border-slate-100' : 'cursor-pointer hover:border-slate-300'
+                            }`}
+                          >
+                            <option value="">-</option>
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                            <option value="PM_Late">PM Late</option>
+                          </select>
+                          {updatingTimeId === doc.id && (
+                            <svg className="animate-spin h-3.5 w-3.5 text-sky-700" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                            </svg>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-center font-medium text-slate-500 text-xs">
+                        {doc.dateReceive !== '-' ? formatDate(doc.dateReceive) : '-'}
+                      </td>
+                      <td className="font-semibold text-slate-700 text-xs max-w-[120px] truncate">
+                        {doc.route?.replace('_', ' ') || '-'}
+                      </td>
+                      <td className="text-slate-500 font-medium text-xs max-w-[120px] truncate" title={doc.remarks}>
+                        {doc.remarks || '-'}
+                      </td>
+                      <td>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleView(doc)}
+                            className="p-1.5 rounded-lg border border-slate-100 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                            title="View Details"
+                          >
+                            <FiEye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(doc)}
+                            className="p-1.5 rounded-lg border border-slate-100 text-sky-600 hover:bg-sky-50 transition-colors cursor-pointer"
+                            title="Edit Record"
+                          >
+                            <FiEdit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleArchive(doc.id)}
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                              isArchiveDisabled
+                                ? 'opacity-40 cursor-not-allowed text-slate-400 border-slate-100'
+                                : 'text-amber-600 hover:bg-amber-50 border-amber-100'
+                            }`}
+                            title={isArchiveDisabled ? "Action restricted" : "Archive Document"}
+                            disabled={isArchiveDisabled || archivingId === doc.id}
+                          >
+                            {archivingId === doc.id ? (
+                              <svg className="animate-spin h-3.5 w-3.5 text-amber-600" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                              </svg>
+                            ) : (
+                              <FiArchive className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan="9" className="text-center py-16 text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <FiSearch className="w-8 h-8 opacity-30" />
+                      <p className="text-sm font-semibold">No matching records found</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal overlays */}
       {showIncomingModal && (
         <OverlayIncoming 
           isOpen={showIncomingModal}

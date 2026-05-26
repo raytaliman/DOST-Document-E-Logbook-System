@@ -1,4 +1,4 @@
-const { prisma } = require('../db/prisma');
+const { pool } = require('../db/pool');
 const formatDateForDatabase = require('../utils/formatDate');
 
 module.exports = (app, io) => {
@@ -6,30 +6,19 @@ module.exports = (app, io) => {
   app.get('/api/documents', async (req, res) => {
     try {
       const { direction } = req.query;
-      const where = {};
+      let query = `
+        SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, isarchive, documentdirection, calcnetworkdays, deducteddays, networkdaysremarks 
+        FROM tbldocuments
+      `;
+      const params = [];
       if (direction) {
-        where.documentdirection = direction.toLowerCase();
+        query += ' WHERE documentdirection = $1';
+        params.push(direction.toLowerCase());
       }
-      const documents = await prisma.tbldocuments.findMany({
-        where,
-        orderBy: { datesent: 'desc' },
-        select: {
-          documentid: true,
-          dtsno: true,
-          documenttype: true,
-          datesent: true,
-          datereleased: true,
-          time: true,
-          route: true,
-          remarks: true,
-          isarchive: true,
-          documentdirection: true,
-          calcnetworkdays: true,
-          deducteddays: true,
-          networkdaysremarks: true
-        }
-      });
-      res.json(documents);
+      query += ' ORDER BY datesent DESC';
+      
+      const result = await pool.query(query, params);
+      res.json(result.rows);
     } catch (error) {
       console.error('Error fetching documents:', error);
       res.status(500).json({ error: 'Failed to fetch documents', message: error.message });
@@ -59,21 +48,27 @@ module.exports = (app, io) => {
         return res.status(400).json({ error: 'Invalid Date Received format' });
       }
       const moment = require("moment-timezone");
-      const newDoc = await prisma.tbldocuments.create({
-        data: {
-          dtsno: dtsno.trim().toUpperCase(),
-          documenttype: documenttype.trim(),
-          route: route.trim(),
-          remarks: remarks?.trim() || null,
-          documentdirection: 'outgoing',
-          datesent: moment.tz(datesent, "YYYY-MM-DD HH:mm:ss", "Asia/Manila").toDate(),
-          datereleased: datereleased, // Store as string
-          time: null,
-          isarchive: false
-        }
-      });
+      const datesentDate = moment.tz(datesent, "YYYY-MM-DD HH:mm:ss", "Asia/Manila").toDate();
+
+      const result = await pool.query(
+        `INSERT INTO tbldocuments 
+         (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+         RETURNING *`,
+        [
+          dtsno.trim().toUpperCase(),
+          documenttype.trim(),
+          route.trim(),
+          remarks?.trim() || null,
+          'outgoing',
+          datesentDate,
+          datereleased,
+          null,
+          false
+        ]
+      );
       
-      res.status(201).json(newDoc);
+      res.status(201).json(result.rows[0]);
       io.emit('documents_updated');
     } catch (error) {
       console.error('Create document error:', error);
@@ -92,14 +87,13 @@ module.exports = (app, io) => {
     try {
         // Handle time-only updates for 'All Documents' page quick edit
         if (Object.keys(req.body).length === 1 && typeof time !== 'undefined') {
-            const updatedDoc = await prisma.tbldocuments.update({
-                where: { documentid: parseInt(id) },
-                data: { 
-                    time: time === '' || time === '-' ? null : time 
-                }
-            });
+            const timeValue = time === '' || time === '-' ? null : time;
+            const result = await pool.query(
+                'UPDATE tbldocuments SET time = $1 WHERE documentid = $2 RETURNING *',
+                [timeValue, parseInt(id)]
+            );
             io.emit('documents_updated');
-            return res.json(updatedDoc);
+            return res.json(result.rows[0]);
         }
 
         // Validate required fields for full updates
@@ -110,26 +104,50 @@ module.exports = (app, io) => {
             });
         }
 
-        const dataToUpdate = {
-            dtsno: dtsno.trim().toUpperCase(),
-            documenttype: documenttype.trim(),
-            route: route.trim(),
-            remarks: remarks?.trim() || null,
-            time: time === '' || time === '-' ? null : time,
-            documentdirection: 'outgoing'
-        };
-
-        // Only include datereleased in the update if it's provided
-        if (datereleased) {
-            dataToUpdate.datereleased = datereleased;
-        } else if (datereleased === null) {
-            dataToUpdate.datereleased = null;
+        const timeValue = time === '' || time === '-' ? null : time;
+        const remarksValue = remarks?.trim() || null;
+        
+        let query, params;
+        if (typeof datereleased !== 'undefined') {
+            query = `
+                UPDATE tbldocuments 
+                SET dtsno = $1, documenttype = $2, route = $3, remarks = $4, time = $5, documentdirection = $6, datereleased = $7
+                WHERE documentid = $8 
+                RETURNING *
+            `;
+            params = [
+                dtsno.trim().toUpperCase(),
+                documenttype.trim(),
+                route.trim(),
+                remarksValue,
+                timeValue,
+                'outgoing',
+                datereleased, // could be a string or null
+                parseInt(id)
+            ];
+        } else {
+            query = `
+                UPDATE tbldocuments 
+                SET dtsno = $1, documenttype = $2, route = $3, remarks = $4, time = $5, documentdirection = $6
+                WHERE documentid = $7 
+                RETURNING *
+            `;
+            params = [
+                dtsno.trim().toUpperCase(),
+                documenttype.trim(),
+                route.trim(),
+                remarksValue,
+                timeValue,
+                'outgoing',
+                parseInt(id)
+            ];
         }
 
-        const updatedDoc = await prisma.tbldocuments.update({
-            where: { documentid: parseInt(id) },
-            data: dataToUpdate
-        });
+        const result = await pool.query(query, params);
+        const updatedDoc = result.rows[0];
+        if (!updatedDoc) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
         
         res.json(updatedDoc);
         io.emit('documents_updated');
@@ -147,15 +165,12 @@ module.exports = (app, io) => {
   app.delete('/api/documents/:id', async (req, res) => {
     const { id } = req.params;
     try {
-      const document = await prisma.tbldocuments.findUnique({
-        where: { documentid: parseInt(id) },
-      });
+      const documentRes = await pool.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+      const document = documentRes.rows[0];
       if (!document) {
         return res.status(404).json({ message: 'Document not found' });
       }
-      await prisma.tbldocuments.delete({
-        where: { documentid: parseInt(id) },
-      });
+      await pool.query('DELETE FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
       io.emit('documents_updated');
       return res.status(200).json({ message: 'Document deleted successfully' });
     } catch (error) {
@@ -167,23 +182,18 @@ module.exports = (app, io) => {
   // Archive document
   app.put('/api/documents/:id/archive', async (req, res) => {
     const { id } = req.params;
-    const { isarchive, archivedate, archivedby } = req.body;
+    const { archivedate, archivedby } = req.body;
     try {
-      const document = await prisma.tbldocuments.findUnique({
-        where: { documentid: parseInt(id) }
-      });
+      const documentRes = await pool.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+      const document = documentRes.rows[0];
       if (!document) {
         return res.status(404).json({ error: 'Document not found' });
       }
-      const updatedDoc = await prisma.tbldocuments.update({
-        where: { documentid: parseInt(id) },
-        data: {
-          isarchive: true,
-          archivedate: archivedate,
-          archivedby: archivedby || 'ITSM'
-        }
-      });
-      res.json(updatedDoc);
+      const updatedDocRes = await pool.query(
+        'UPDATE tbldocuments SET isarchive = true, archivedate = $1, archivedby = $2 WHERE documentid = $3 RETURNING *',
+        [archivedate, archivedby || 'ITSM', parseInt(id)]
+      );
+      res.json(updatedDocRes.rows[0]);
       io.emit('documents_updated');
     } catch (error) {
       console.error('Archive document error:', error);
@@ -195,14 +205,14 @@ module.exports = (app, io) => {
   app.put('/api/documents/:id/restore', async (req, res) => {
     const { id } = req.params;
     try {
-      const updatedDoc = await prisma.tbldocuments.update({
-        where: { documentid: parseInt(id) },
-        data: {
-          isarchive: false,
-          archivedate: null,
-          archivedby: null
-        }
-      });
+      const updatedDocRes = await pool.query(
+        'UPDATE tbldocuments SET isarchive = false, archivedate = NULL, archivedby = NULL WHERE documentid = $1 RETURNING *',
+        [parseInt(id)]
+      );
+      const updatedDoc = updatedDocRes.rows[0];
+      if (!updatedDoc) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
       res.json(updatedDoc);
       io.emit('documents_updated');
     } catch (error) {
@@ -214,24 +224,13 @@ module.exports = (app, io) => {
   // Get archived documents
   app.get('/api/documents/archived', async (req, res) => {
     try {
-      const documents = await prisma.tbldocuments.findMany({
-        where: { isarchive: true },
-        orderBy: { archivedate: 'desc' },
-        select: {
-          documentid: true,
-          dtsno: true,
-          documenttype: true,
-          datesent: true,
-          datereleased: true,
-          time: true,
-          route: true,
-          remarks: true,
-          archivedate: true,
-          archivedby: true,
-          documentdirection: true
-        }
-      });
-      res.json(documents);
+      const result = await pool.query(
+        `SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, archivedate, archivedby, documentdirection 
+         FROM tbldocuments 
+         WHERE isarchive = true 
+         ORDER BY archivedate DESC`
+      );
+      res.json(result.rows);
     } catch (error) {
       console.error('Error fetching archived documents:', error);
       res.status(500).json({ error: 'Failed to fetch archived documents', message: error.message });
@@ -243,25 +242,25 @@ module.exports = (app, io) => {
     const { id } = req.params;
     const { deducteddays, calcnetworkdays, remarks } = req.body;
     try {
-      const document = await prisma.tbldocuments.findUnique({
-        where: { documentid: parseInt(id) }
-      });
+      const documentRes = await pool.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+      const document = documentRes.rows[0];
       if (!document) {
         return res.status(404).json({ error: 'Document not found' });
       }
-      const updatedDoc = await prisma.tbldocuments.update({
-        where: { documentid: parseInt(id) },
-        data: {
-          deducteddays: deducteddays !== null && deducteddays !== undefined 
-            ? parseInt(deducteddays, 10) 
-            : null,
-          calcnetworkdays: calcnetworkdays !== null && calcnetworkdays !== undefined 
-            ? parseInt(calcnetworkdays, 10) 
-            : null,
-          networkdaysremarks: remarks || null
-        }
-      });
-      res.json(updatedDoc);
+      
+      const deducteddaysVal = deducteddays !== null && deducteddays !== undefined 
+        ? parseInt(deducteddays, 10) 
+        : null;
+      const calcnetworkdaysVal = calcnetworkdays !== null && calcnetworkdays !== undefined 
+        ? parseInt(calcnetworkdays, 10) 
+        : null;
+        
+      const updatedDocRes = await pool.query(
+        'UPDATE tbldocuments SET deducteddays = $1, calcnetworkdays = $2, networkdaysremarks = $3 WHERE documentid = $4 RETURNING *',
+        [deducteddaysVal, calcnetworkdaysVal, remarks || null, parseInt(id)]
+      );
+      
+      res.json(updatedDocRes.rows[0]);
       io.emit('documents_updated');
     } catch (error) {
       console.error('Update network days error:', error);

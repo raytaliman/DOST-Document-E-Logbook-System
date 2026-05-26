@@ -17,7 +17,7 @@ function Login() {
     if (formRef.current) {
       formRef.current.style.opacity = 0;
       formRef.current.style.transform = 'translateY(20px)';
-      formRef.current.style.transition = 'opacity 1.5s ease-out, transform 1.5s ease-out';
+      formRef.current.style.transition = 'opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1)';
       
       setTimeout(() => {
         if (formRef.current) {
@@ -33,15 +33,12 @@ function Login() {
       if (!email || !password) {
         Swal.fire({
           icon: 'warning',
-          title: 'Missing fields',
+          title: 'Missing Fields',
           text: 'Please enter both email and password',
           timer: 1800,
           showConfirmButton: false,
           customClass: {
-            popup: 'swal2-minimalist',
-            title: 'swal2-minimalist-title',
-            icon: 'swal2-minimalist-icon',
-            htmlContainer: 'swal2-minimalist-html'
+            popup: 'swal2-minimalist'
           }
         });
         return;
@@ -49,7 +46,7 @@ function Login() {
 
       setIsLoading(true);
       
-      const response = await fetch(`${API_URL}/login`, {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -60,7 +57,7 @@ function Login() {
       if (!response.ok) {
         Swal.fire({
           icon: 'error',
-          title: 'Login failed',
+          title: 'Login Failed',
           text: data.error || "Login failed",
           timer: 2000,
           showConfirmButton: false,
@@ -78,15 +75,12 @@ function Login() {
       setIsLoading(false);
       Swal.fire({
         icon: 'error',
-        title: 'Network error',
+        title: 'Network Error',
         text: 'Please try again.',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
-          popup: 'swal2-minimalist',
-          title: 'swal2-minimalist-title',
-          icon: 'swal2-minimalist-icon',
-          htmlContainer: 'swal2-minimalist-html'
+          popup: 'swal2-minimalist'
         }
       });
     }
@@ -106,73 +100,106 @@ function Login() {
   }, [isLoading, handleSubmit]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-10 px-4 bg-[FDFDFD]">
+    <div className="min-h-screen flex items-center justify-center py-10 px-4 bg-slate-50 relative overflow-hidden">
+      {/* Decorative Blur Spheres */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] rounded-full bg-sky-200/40 blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[35vw] h-[35vw] rounded-full bg-pink-100/40 blur-3xl pointer-events-none"></div>
+
       <div 
         ref={formRef}
-        className="flex w-full max-w-3xl h-[400px] bg-white shadow-lg rounded-lg overflow-hidden opacity-0"
+        className="flex w-full max-w-3xl h-[460px] bg-white border border-slate-100 shadow-2xl rounded-3xl overflow-hidden opacity-0 z-10"
       >
         {/* Left Side */}
-        <div className="w-1/2 bg-[radial-gradient(ellipse_50%_50%_at_50%_50%,_rgba(20,96,162,0.70)_0%,_#1460A2_100%)] flex items-center justify-center p-6">
-          <div className="flex flex-col items-center space-y-4">
-            <img src="/logoWithLabel.png" alt="Logo" className="w-32 h-32" />
-            <h1 className="text-white text-[14px] font-bold tracking-wider text-center">
-              E-LOGBOOK: INCOMING & OUTGOING TRACKER
-            </h1>
+        <div className="w-1/2 bg-gradient-to-br from-[#0b4c95] to-[#073467] flex flex-col items-center justify-center p-8 relative overflow-hidden">
+          {/* Subtle decorative background circles */}
+          <div className="absolute w-64 h-64 rounded-full bg-white/5 -top-20 -left-20 pointer-events-none"></div>
+          <div className="absolute w-48 h-48 rounded-full bg-white/5 -bottom-10 -right-10 pointer-events-none"></div>
+          
+          <div className="flex flex-col items-center space-y-5 z-10">
+            <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl">
+              <img src="/logoWithLabel.png" alt="Logo" className="w-28 h-28 object-contain" />
+            </div>
+            <div className="space-y-1 text-center">
+              <h1 className="text-white text-base font-extrabold tracking-wider">
+                DOST E-LOGBOOK
+              </h1>
+              <p className="text-sky-200/80 text-[10px] uppercase font-bold tracking-widest">
+                Incoming & Outgoing Tracker
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Right Side - Form */}
-        <div className="w-1/2 p-8 flex flex-col justify-center">
-          <h2 className="text-2xl font-bold text-sky-700 mb-10 text-center">
-            Log In
-          </h2>
-
-          <div className="mb-8 relative">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Email
-            </label>
-            <input
-              type="text"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              className="w-full h-10 pl-5.5 pr-4 rounded-full border-2 border-sky-700 placeholder:text-sky-950/50 text-[12px] focus:border-[#004077] focus:outline-none focus:ring-1 focus:ring-[#004077] focus:[border-width:1px]"
-            />
+        <div className="w-1/2 p-10 flex flex-col justify-center bg-white">
+          <div className="mb-8">
+            <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">
+              Sign In
+            </h2>
+            <p className="text-slate-400 text-xs mt-1.5">
+              Access the Document Tracking System
+            </p>
           </div>
 
-          <div className="relative mb-2">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Password
-            </label>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              className="w-full h-10 pl-5.5 pr-4 rounded-full border-2 border-sky-700 placeholder:text-sky-950/50 text-[12px] focus:border-[#004077] focus:outline-none focus:ring-1 focus:ring-[#004077] focus:[border-width:1px]"
-            />
-          </div>
+          <div className="space-y-5">
+            <div className="relative">
+              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-1.5 ml-1">
+                Email Address
+              </label>
+              <input
+                type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                className="w-full h-11 px-4 rounded-xl border border-slate-200 placeholder:text-slate-400 text-sm focus:border-[#0b4c95] focus:outline-none focus:ring-4 focus:ring-sky-500/10 transition-all duration-200"
+              />
+            </div>
 
-          <div className="flex items-center mb-8 ml-3">
-            <input
-              type="checkbox"
-              checked={showPassword}
-              onChange={(e) => setShowPassword(e.target.checked)}
-              className="mr-1 text-sky-700 w-3 h-3 cursor-pointer"
-            />
-            <label className="text-xs text-sky-700">Show Password</label>
-          </div>
+            <div className="relative">
+              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-1.5 ml-1">
+                Password
+              </label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full h-11 px-4 rounded-xl border border-slate-200 placeholder:text-slate-400 text-sm focus:border-[#0b4c95] focus:outline-none focus:ring-4 focus:ring-sky-500/10 transition-all duration-200"
+              />
+            </div>
 
-          <div className="flex justify-end">
-            <button
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className={`cursor-pointer w-26 h-8 bg-sky-700 text-white font-semibold rounded-2xl transition text-sm ${
-                isLoading ? 'opacity-75' : 'hover:bg-sky-800'
-              }`}
-            >
-              {isLoading ? 'Signing in...' : 'Sign in'}
-            </button>
+            <div className="flex items-center ml-1">
+              <input
+                type="checkbox"
+                id="show-password"
+                checked={showPassword}
+                onChange={(e) => setShowPassword(e.target.checked)}
+                className="mr-2 rounded border-slate-300 text-[#0b4c95] focus:ring-[#0b4c95] w-3.5 h-3.5 cursor-pointer"
+              />
+              <label htmlFor="show-password" className="text-xs font-semibold text-slate-500 select-none cursor-pointer">
+                Show Password
+              </label>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className={`cursor-pointer w-full h-11 bg-gradient-to-r from-[#0b4c95] to-[#073467] hover:from-[#0a4587] hover:to-[#062c58] text-white font-bold rounded-xl shadow-lg shadow-sky-900/15 hover:shadow-sky-900/25 transition-all duration-200 text-sm flex items-center justify-center ${
+                  isLoading ? 'opacity-75 cursor-not-allowed' : ''
+                }`}
+              >
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Signing in...</span>
+                  </div>
+                ) : 'Sign In'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

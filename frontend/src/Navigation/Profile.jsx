@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
+import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiEdit2, FiCheck, FiX, FiLayers } from 'react-icons/fi';
 import '../index.css';
 
 function Profile() {
@@ -11,12 +12,13 @@ function Profile() {
     adminpass: '',
     confirmPass: ''
   });
-  const [originalData, setOriginalData] = useState(null); // For cancel
+  const [originalData, setOriginalData] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [userType, setUserType] = useState(''); // Track usertype
+  const [userType, setUserType] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const API_URL = import.meta.env.VITE_API_URL;
+
   // Load current user from localStorage
   useEffect(() => {
     const admin = JSON.parse(localStorage.getItem('admin'));
@@ -73,14 +75,11 @@ function Profile() {
     }));
   };
 
-  const handleDirectionChange = (e) => {
-    // Prevent changes since Document Direction is now read-only
-    return;
-  };
-
   const validate = () => {
     const newErrors = {};
-    // Only validate password if either field is filled
+    if (!formData.adminname.trim()) {
+      newErrors.adminname = 'Name is required';
+    }
     if ((formData.adminpass || formData.confirmPass) && formData.adminpass !== formData.confirmPass) {
       newErrors.confirmPass = 'Passwords do not match.';
     }
@@ -101,7 +100,6 @@ function Profile() {
       const admin = JSON.parse(localStorage.getItem('admin'));
       const payload = {
         adminname: formData.adminname.trim(),
-        // Only send documentdirection if not superadmin
         ...(userType !== 'superadmin' && { documentdirection: formData.documentdirection }),
         ...(formData.adminpass && { adminpass: formData.adminpass })
       };
@@ -118,7 +116,7 @@ function Profile() {
         setIsSubmitting(false);
         Swal.fire({
           icon: 'error',
-          title: 'Error',
+          title: 'Update Failed',
           text: err.error || 'Failed to update profile.',
           timer: 2500,
           showConfirmButton: false,
@@ -128,7 +126,6 @@ function Profile() {
       }
 
       const updated = await response.json();
-      // Update localStorage
       localStorage.setItem('admin', JSON.stringify({ ...admin, ...updated }));
 
       setViewMode(true);
@@ -139,7 +136,8 @@ function Profile() {
       }));
       Swal.fire({
         icon: 'success',
-        title: 'Profile Updated!',
+        title: 'Profile Updated',
+        text: 'Your profile has been updated successfully.',
         timer: 1500,
         showConfirmButton: false,
         customClass: { popup: 'swal2-minimalist' }
@@ -160,164 +158,157 @@ function Profile() {
   };
 
   return (
-    <main className="min-h-full flex items-center justify-center">
-      <div
-        className="w-[450px] max-w-full bg-white rounded-[30px] shadow-lg p-8 flex flex-col gap-5 relative"
-      >
+    <main className="min-h-[80vh] flex items-center justify-center p-4">
+      <div className="w-[480px] max-w-full bg-white rounded-3xl shadow-xl border border-slate-100 p-8 flex flex-col gap-6 relative transition-all duration-300">
+        
         {/* Title */}
-        <h2 className="text-2xl font-bold text-sky-700 text-center mb-4">Admin Profile</h2>
-        <form className="flex flex-col gap-6" onSubmit={handleSubmit} id="profile-form">
+        <div className="text-center">
+          <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Admin Profile</h2>
+          <p className="text-xs text-slate-400 mt-1">Manage your account details and security settings</p>
+        </div>
+
+        <form className="flex flex-col gap-5" onSubmit={handleSubmit} id="profile-form">
           {/* Name */}
-          <div className="relative flex flex-col gap-1">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Name
-            </label>
-            <input
-              type="text"
-              name="adminname"
-              placeholder="e.g. Juan Dela Cruz"
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.adminname ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                errors.adminname ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              }`}
-              value={formData.adminname}
-              onChange={handleChange}
-              readOnly={viewMode}
-            />
-            {errors.adminname && <p className="text-xs text-red-600 mt-1 px-2">{errors.adminname}</p>}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Name</label>
+            <div className={`relative flex items-center rounded-xl border transition-all duration-200 ${
+              errors.adminname ? 'border-red-500 bg-red-50/10' : 'border-slate-200 bg-white focus-within:border-[#0b4c95] focus-within:ring-4 focus-within:ring-sky-500/10'
+            } ${viewMode ? 'bg-slate-50/50' : ''}`}>
+              <FiUser className="absolute left-4 text-slate-400 w-4 h-4" />
+              <input
+                type="text"
+                name="adminname"
+                placeholder="e.g. Juan Dela Cruz"
+                className={`text-xs w-full h-11 pl-11 pr-4 bg-transparent outline-none text-slate-800 font-semibold ${viewMode ? 'text-slate-500 cursor-not-allowed' : ''}`}
+                value={formData.adminname}
+                onChange={handleChange}
+                readOnly={viewMode}
+              />
+            </div>
+            {errors.adminname && <p className="text-[10px] font-bold text-red-500 mt-1 px-1">{errors.adminname}</p>}
           </div>
-          {/* Email (always pre-filled, never editable) */}
-          <div className="relative flex flex-col gap-1">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Email
-            </label>
-            <input
-              type="text"
-              name="adminemail"
-              placeholder="e.g. jdelacruz@region1.dost.gov.ph"
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.adminemail ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                errors.adminemail ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              }`}
-              value={formData.adminemail}
-              readOnly
-              autoComplete="off"
-            />
-            {errors.adminemail && <p className="text-xs text-red-600 mt-1 px-2">{errors.adminemail}</p>}
+
+          {/* Email */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Email Address</label>
+            <div className="relative flex items-center rounded-xl border border-slate-200 bg-slate-50/50">
+              <FiMail className="absolute left-4 text-slate-400 w-4 h-4" />
+              <input
+                type="text"
+                name="adminemail"
+                placeholder="e.g. jdelacruz@region1.dost.gov.ph"
+                className="text-xs w-full h-11 pl-11 pr-4 bg-transparent outline-none text-slate-500 cursor-not-allowed font-semibold"
+                value={formData.adminemail}
+                readOnly
+                autoComplete="off"
+              />
+            </div>
           </div>
+
           {/* Document Direction (hide if superadmin) */}
           {userType !== 'superadmin' && (
-            <div className="relative flex flex-col gap-1">
-              <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-                Document Direction
-              </label>
-              <select
-                name="documentdirection"
-                className={`text-xs w-full h-12 pl-5 pr-10 rounded-full border-2 ${
-                  errors.documentdirection ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                } bg-white focus:outline-none focus:ring-1 ${
-                  errors.documentdirection ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                }`}
-                value={formData.documentdirection}
-                onChange={handleDirectionChange}
-                disabled={true}
-                readOnly
-              >
-                <option value="">Select Direction</option>
-                <option value="incoming">Incoming</option>
-                <option value="outgoing">Outgoing</option>
-              </select>
-              {errors.documentdirection && (
-                <p className="text-xs text-red-600 mt-1 px-2">{errors.documentdirection}</p>
-              )}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Document Direction</label>
+              <div className="relative flex items-center rounded-xl border border-slate-200 bg-slate-50/50">
+                <FiLayers className="absolute left-4 text-slate-400 w-4 h-4" />
+                <select
+                  name="documentdirection"
+                  className="text-xs w-full h-11 pl-11 pr-10 bg-transparent outline-none text-slate-500 cursor-not-allowed font-semibold appearance-none"
+                  value={formData.documentdirection}
+                  disabled={true}
+                  readOnly
+                >
+                  <option value="">Select Direction</option>
+                  <option value="incoming">Incoming</option>
+                  <option value="outgoing">Outgoing</option>
+                </select>
+              </div>
             </div>
           )}
-          {/* Password fields always visible, but only editable in edit mode */}
-          <div className="relative flex flex-col gap-1">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              New Password
-            </label>
-            <input
-              type={showPassword ? "text" : "password"}
-              name="adminpass"
-              placeholder="Enter new password"
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.adminpass ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                errors.adminpass ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              }`}
-              value={formData.adminpass}
-              onChange={handleChange}
-              autoComplete="new-password"
-              readOnly={viewMode}
-            />
-            {errors.adminpass && <p className="text-xs text-red-600 mt-1 px-2">{errors.adminpass}</p>}
-          </div>
-          <div className="relative">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Confirm New Password
-            </label>
-            <input
-              type={showPassword ? "text" : "password"}
-              name="confirmPass"
-              placeholder="Confirm new password"
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.confirmPass ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                errors.confirmPass ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              } mb-1`}
-              value={formData.confirmPass}
-              onChange={handleChange}
-              autoComplete="new-password"
-              readOnly={viewMode}
-            />
-            {errors.confirmPass && <p className="text-xs text-red-600 mt-1 px-2">{errors.confirmPass}</p>}
-          </div>
+
+          {/* Passwords - Only show/edit if editing */}
+          {!viewMode && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">New Password</label>
+                <div className={`relative flex items-center rounded-xl border transition-all duration-200 ${
+                  errors.adminpass ? 'border-red-500 bg-red-50/10' : 'border-slate-200 bg-white focus-within:border-[#0b4c95] focus-within:ring-4 focus-within:ring-sky-500/10'
+                }`}>
+                  <FiLock className="absolute left-4 text-slate-400 w-4 h-4" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="adminpass"
+                    placeholder="Enter new password (optional)"
+                    className="text-xs w-full h-11 pl-11 pr-12 bg-transparent outline-none text-slate-800 font-semibold"
+                    value={formData.adminpass}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-4 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.adminpass && <p className="text-[10px] font-bold text-red-500 mt-1 px-1">{errors.adminpass}</p>}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Confirm Password</label>
+                <div className={`relative flex items-center rounded-xl border transition-all duration-200 ${
+                  errors.confirmPass ? 'border-red-500 bg-red-50/10' : 'border-slate-200 bg-white focus-within:border-[#0b4c95] focus-within:ring-4 focus-within:ring-sky-500/10'
+                }`}>
+                  <FiLock className="absolute left-4 text-slate-400 w-4 h-4" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="confirmPass"
+                    placeholder="Confirm new password"
+                    className="text-xs w-full h-11 pl-11 pr-12 bg-transparent outline-none text-slate-800 font-semibold"
+                    value={formData.confirmPass}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                  />
+                </div>
+                {errors.confirmPass && <p className="text-[10px] font-bold text-red-500 mt-1 px-1">{errors.confirmPass}</p>}
+              </div>
+            </>
+          )}
         </form>
-        {/* Show Password */}
-        <div className="w-full -mt-4">
-          <div className="flex items-center ml-3 mb-1">
-            <input
-              type="checkbox"
-              checked={showPassword}
-              onChange={(e) => setShowPassword(e.target.checked)}
-              className="mr-1 text-sky-700 w-3 h-3 cursor-pointer"
-              disabled={viewMode}
-            />
-            <label className="text-xs text-sky-700">Show Password</label>
-          </div>
-        </div>
+
         {/* Action Buttons */}
         <div className="flex justify-end gap-3 pt-2">
           {!viewMode ? (
             <>
               <button
                 type="button"
-                className="bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-2xl px-6 py-2 transition-colors cursor-pointer"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl px-5 py-2.5 transition-all duration-200 cursor-pointer flex items-center gap-1.5 border border-slate-200/50"
                 onClick={handleCancel}
                 disabled={isSubmitting}
               >
-                Cancel
+                <FiX className="w-3.5 h-3.5" />
+                <span>Cancel</span>
               </button>
               <button
                 type="submit"
                 form="profile-form"
-                className="bg-sky-700 hover:bg-sky-800 text-white text-sm font-medium rounded-2xl px-6 py-2 transition-colors cursor-pointer"
+                className="btn-dost-blue text-xs font-bold rounded-xl px-5 py-2.5 transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-md shadow-sky-900/10"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Saving...' : 'Save Changes'}
+                <FiCheck className="w-3.5 h-3.5" />
+                <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
               </button>
             </>
           ) : (
             <button
               type="button"
-              className="bg-[#28A745] text-white rounded-2xl hover:bg-[#218838] transition-colors cursor-pointer px-6 py-2 text-sm font-semibold"
+              className="btn-dost-blue text-xs font-bold rounded-xl px-5 py-2.5 transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-md shadow-sky-900/10 hover:-translate-y-0.5"
               onClick={handleEdit}
               title="Edit Profile"
             >
-              Edit
+              <FiEdit2 className="w-3.5 h-3.5" />
+              <span>Edit Profile</span>
             </button>
           )}
         </div>

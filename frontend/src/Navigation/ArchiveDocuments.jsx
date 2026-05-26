@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2'; 
-import '../index.css'
 import { io } from 'socket.io-client';
 import moment from 'moment';
+import { FiRotateCcw, FiTrash2, FiSearch, FiChevronDown } from 'react-icons/fi';
+import '../index.css';
 
 function ArchiveDocuments() {
   const [documents, setDocuments] = useState([]);
@@ -45,7 +46,7 @@ function ArchiveDocuments() {
       setLoading(false);
       Swal.fire({
         icon: 'error',
-        title: 'Failed to load documents',
+        title: 'Failed to Load Documents',
         text: 'Please try again.',
         timer: 2500,
         showConfirmButton: false,
@@ -77,9 +78,8 @@ function ArchiveDocuments() {
       text: 'Do you want to restore this document?',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
       confirmButtonText: 'Yes, restore it!',
+      cancelButtonText: 'Cancel',
       customClass: {
         popup: 'swal2-minimalist'
       }
@@ -101,7 +101,7 @@ function ArchiveDocuments() {
         setDocuments(documents.filter(doc => doc.documentid !== docId));
         Swal.fire({
           icon: 'success',
-          title: 'Restored!',
+          title: 'Restored Successfully',
           text: 'Document has been restored.',
           timer: 1800,
           showConfirmButton: false,
@@ -111,10 +111,9 @@ function ArchiveDocuments() {
         });
       } else {
         const error = await response.json();
-        console.error('Failed to restore document:', error);
         Swal.fire({
           icon: 'error',
-          title: 'Failed to restore',
+          title: 'Failed to Restore',
           text: error.message || 'Failed to restore document. Please try again.',
           timer: 2500,
           showConfirmButton: false,
@@ -145,9 +144,8 @@ function ArchiveDocuments() {
       text: 'This will permanently delete the document from the database. This action cannot be undone!',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
       confirmButtonText: 'Yes, delete it!',
+      cancelButtonText: 'Cancel',
       customClass: {
         popup: 'swal2-minimalist'
       }
@@ -169,16 +167,12 @@ function ArchiveDocuments() {
         throw new Error(text || 'Failed to delete document');
       }
   
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to delete document');
-      }
+      await response.json();
   
       setDocuments(documents.filter(doc => doc.documentid !== docId));
       Swal.fire({
         icon: 'success',
-        title: 'Deleted!',
+        title: 'Permanently Deleted',
         text: 'Document has been permanently deleted.',
         timer: 1800,
         showConfirmButton: false,
@@ -210,7 +204,6 @@ function ArchiveDocuments() {
       doc.documentType?.toLowerCase().includes(search) ||
       doc.documentDirection?.toLowerCase().includes(search);
 
-    // Archive date filter (Month/Year)
     const archiveDateStr = doc.archiveDate;
     let matchesMonth = true;
     let matchesYear = true;
@@ -223,37 +216,27 @@ function ArchiveDocuments() {
     return matchesSearch && matchesMonth && matchesYear;
   });
 
-  
   const formatDate = (dateString) => {
     if (!dateString || dateString === '-') return '-';
-    
     try {
       const date = moment(dateString);
       return date.isValid() ? date.format('MMMM D, YYYY [at] h:mm A') : '-';
     } catch (e) {
-      console.error('Error formatting date:', e);
       return '-';
     }
   };
 
-  // Components
+  // Redesigned Dropdowns
   const DropdownButton = ({ label, value, onClick, isOpen }) => (
-    <div className="relative w-32">
+    <div className="relative w-36">
       <button
         onClick={onClick}
-        className={`h-11 bg-sky-700/95 ${
-          isOpen ? 'rounded-t-lg border-b-0' : 'rounded-2xl'
-        } shadow-sm flex items-center justify-between px-4 text-white font-semibold text-xl cursor-pointer hover:bg-sky-700 transition-colors w-full border`}
+        className={`h-10 bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 ${
+          isOpen ? 'rounded-t-xl border-b-0 shadow-lg' : 'rounded-xl'
+        } shadow-2xs flex items-center justify-between px-4 font-bold text-xs cursor-pointer transition-all duration-200 w-full`}
       >
-        {value}
-        <svg 
-          className={`w-4 h-4 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          fill="none" 
-          viewBox="0 0 24 24" 
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <span className="truncate">{value}</span>
+        <FiChevronDown className={`w-3.5 h-3.5 ml-2 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-slate-600' : ''}`} />
       </button>
     </div>
   );
@@ -261,206 +244,198 @@ function ArchiveDocuments() {
   const DropdownMenu = ({ items, onSelect, isOpen, className }) => (
     isOpen && (
       <div
-        className={`absolute top-full left-0 z-30 w-full bg-white rounded-b-lg shadow-md border border-t-0 ${className}`}
+        className={`absolute top-[98%] left-0 z-30 w-full bg-white rounded-b-xl shadow-lg border border-slate-200/60 overflow-hidden py-1 divide-y divide-slate-100 ${className}`}
       >
         {items.map((item) => (
-          <div
+          <button
             key={item}
-            className="px-4 py-2 text-sm text-gray-700 hover:bg-sky-100 cursor-pointer"
+            className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
             onClick={() => onSelect(item)}
           >
             {item}
-          </div>
+          </button>
         ))}
       </div>
     )
   );
 
   return (
-    <div className="p-1 relative">
-      <div className="flex flex-wrap justify-end gap-x-2 mb-4">
-        <div className="flex flex-col items-start">
-          <div className="relative w-80 h-11 bg-neutral-100 rounded-2xl shadow-sm border border-sky-700 flex items-center px-4">
+    <div className="p-2 space-y-6">
+      {/* Header Panel with Controls */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Archive Documents</h1>
+          <p className="text-xs text-slate-400 mt-0.5 font-medium">Browse, review, and restore archived logbook transactions</p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Search bar */}
+          <div className="relative w-72 h-10 bg-white border border-slate-200/80 rounded-xl shadow-2xs flex items-center px-3.5 focus-within:border-[#0b4c95] focus-within:ring-4 focus-within:ring-sky-500/10 transition-all duration-200">
+            <FiSearch className="text-slate-400 w-4 h-4 mr-2 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Search Records..."
-              className="w-full bg-transparent outline-none text-sky-950 text-sm"
+              placeholder="Search by DTS no., type, direction..."
+              className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-xs font-semibold"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <img src="./searchIcon.svg" alt="Search" className="w-5 h-5" />
           </div>
-        </div>
 
-        <div className="flex flex-col items-start relative">
-          <DropdownButton 
-            label="Month" 
-            value={selectedMonth} 
-            onClick={() => setShowMonthDropdown(!showMonthDropdown)}
-            isOpen={showMonthDropdown}
-          />
-          <DropdownMenu
-            items={months}
-            onSelect={(month) => {
-              setSelectedMonth(month);
-              setShowMonthDropdown(false);
-            }}
-            isOpen={showMonthDropdown}
-          />
-        </div>
+          {/* Month Dropdown */}
+          <div className="flex flex-col items-start relative">
+            <DropdownButton 
+              value={selectedMonth} 
+              onClick={() => {
+                setShowMonthDropdown(!showMonthDropdown);
+                setShowYearDropdown(false);
+              }}
+              isOpen={showMonthDropdown}
+            />
+            <DropdownMenu
+              items={months}
+              onSelect={(month) => {
+                setSelectedMonth(month);
+                setShowMonthDropdown(false);
+              }}
+              isOpen={showMonthDropdown}
+            />
+          </div>
 
-        <div className="flex flex-col items-start relative">
-          <DropdownButton 
-            label="Year" 
-            value={selectedYear} 
-            onClick={() => setShowYearDropdown(!showYearDropdown)}
-            isOpen={showYearDropdown}
-          />
-          <DropdownMenu
-            items={years}
-            onSelect={(year) => {
-              setSelectedYear(year);
-              setShowYearDropdown(false);
-            }}
-            isOpen={showYearDropdown}
-          />
+          {/* Year Dropdown */}
+          <div className="flex flex-col items-start relative">
+            <DropdownButton 
+              value={selectedYear} 
+              onClick={() => {
+                setShowYearDropdown(!showYearDropdown);
+                setShowMonthDropdown(false);
+              }}
+              isOpen={showYearDropdown}
+            />
+            <DropdownMenu
+              items={years.map(String)}
+              onSelect={(year) => {
+                setSelectedYear(Number(year));
+                setShowYearDropdown(false);
+              }}
+              isOpen={showYearDropdown}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[1200px]">
-          {/* Table Header */}
-          <div className="bg-sky-700 h-15 flex items-center rounded-lg px-4 text-white font-bold text-sm">
-            <div className="w-[15%] min-w-[100px] px-2 text-center">
-              {(() => {
-                const adminData = localStorage.getItem('admin');
-                if (adminData) {
-                  const admin = JSON.parse(adminData);
-                  return admin.documentdirection === 'incoming' ? 'DATE SENT' : 'DATE RECEIVED';
-                }
-                return 'DATE SENT';
-              })()}
-            </div>
-            <div className="w-[15%] min-w-[150px] px-2 text-center">DATE RELEASED</div>
-            <div className="w-[12%] min-w-[120px] px-2 text-center">DTS NO.</div>
-            <div className="w-[12%] min-w-[120px] px-2 text-center">DOCUMENT STATUS</div>
-            <div className="w-[15%] min-w-[150px] px-2 text-center">DOCUMENT TYPE</div>
-            <div className="w-[15%] min-w-[150px] px-2 text-center">ARCHIVE DATE</div>
-            <div className="w-[12%] min-w-[120px] px-2 text-center">ARCHIVED BY</div>
-            <div className="w-[10%] min-w-[100px] px-2 text-center">ACTIONS</div>
-          </div>
-
-          {/* Table Body */}
-          <div
-            className="w-full flex-1 overflow-y-auto scrollbar-hide"
-            style={{ minHeight: 0, maxHeight: 'calc(100vh - 260px)' }} 
-          >
-            {loading ? (
-              <div className="flex justify-center items-center h-32 min-w-[1000px] border-b border-gray-200">
-                <p className="text-gray-500">Loading documents...</p>
-              </div>
-            ) : filteredDocuments.length > 0 ? (
-              filteredDocuments.map((doc) => (
-                <div key={doc.documentid} className="min-w-[1000px] px-4 h-16 flex items-center hover:bg-sky-50 border-b border-[#1460A2]/50">
-                  {/* Date Sent/Received */}
-                  <div className="w-[15%] min-w-[150px] px-2 text-gray-500 text-center text-sm py-3">
-                    {formatDate(doc.dateReceived)}
-                  </div>
-                  
-                  {/* Date Released */}
-                  <div className="w-[15%] min-w-[150px] px-2 text-gray-500 text-center text-sm py-3">
-                    {doc.dateReleased}
-                  </div>
-                  
-                  {/* DTS Number */}
-                  <div className="w-[12%] min-w-[120px] px-2 text-black text-center font-bold text-sm py-3">
-                    {doc.dtsNo}
-                  </div>
-                  
-                  {/* Document Status */}
-                  <div className="w-[12%] min-w-[120px] px-2 text-center">
-                    <span className={`inline-block px-4 py-2 rounded-full text-sm text-black`}>
-                      {doc.documentDirection.charAt(0).toUpperCase() + doc.documentDirection.slice(1)}
-                    </span>
-                  </div>
-                  
-                  {/* Document Type */}
-                  <div className="w-[15%] min-w-[150px] px-2 text-black text-center text-sm py-3 truncate">
-                    {doc.documentType}
-                  </div>
-                  
-                  {/* Archive Date */}
-                  <div className="w-[15%] min-w-[150px] px-2 text-gray-500 text-center text-sm py-3">
-                    {doc.archiveDate}
-                  </div>
-                  
-                  {/* Archive By */}
-                  <div className="w-[12%] min-w-[120px] px-2 text-black text-center text-sm py-3 truncate">
-                    {doc.archiveBy}
-                  </div>
-                  
-                  {/* Actions */}
-                  <div className="w-[10%] min-w-[100px] px-2 flex justify-center space-x-1 py-3">
-                    <button 
-                      onClick={() => handleRestore(doc.documentid)}
-                      className={
-                        `p-2 rounded transition-colors bg-slate-500  text-white 
-                        ${(
-                          (adminDirection === 'incoming' && doc.documentDirection.toLowerCase() !== 'incoming') ||
-                          (adminDirection === 'outgoing' && doc.documentDirection.toLowerCase() !== 'outgoing')
-                        ) ? 'opacity-50 pointer-events-none' : 'hover:bg-slate-600 cursor-pointer'}`
-                      }
-                      title="Restore"
-                      disabled={
-                        (adminDirection === 'incoming' && doc.documentDirection.toLowerCase() !== 'incoming') ||
-                        (adminDirection === 'outgoing' && doc.documentDirection.toLowerCase() !== 'outgoing')
-                      }
-                      tabIndex={-1}
-                    >
-                      <img 
-                        src="/archiveIconBack.svg" 
-                        alt="Restore" 
-                        className="w-3 h-3" 
-                      />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(doc.documentid)}
-                      className={
-                        `p-2 rounded transition-colors bg-red-500 text-white 
-                        ${(
-                          (adminDirection === 'incoming' && doc.documentDirection.toLowerCase() !== 'incoming') ||
-                          (adminDirection === 'outgoing' && doc.documentDirection.toLowerCase() !== 'outgoing')
-                        ) ? 'opacity-50 pointer-events-none' : 'hover:bg-red-600 cursor-pointer'}`
-                      }
-                      title="Delete Permanently"
-                      disabled={
-                        (adminDirection === 'incoming' && doc.documentDirection.toLowerCase() !== 'incoming') ||
-                        (adminDirection === 'outgoing' && doc.documentDirection.toLowerCase() !== 'outgoing')
-                      }
-                      tabIndex={-1}
-                    >
-                      <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        className="h-3 w-3" 
-                        fill="none" 
-                        viewBox="0 0 24 24" 
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      {/* Documents Table Container */}
+      <div className="table-container-premium shadow-2xs">
+        <div className="overflow-x-auto">
+          <table className="table-premium w-full text-left border-collapse">
+            <thead>
+              <tr>
+                <th className="w-[18%] text-center">
+                  {adminDirection === 'incoming' ? 'Date Sent' : 'Date Received'}
+                </th>
+                <th className="w-[18%] text-center">Date Released</th>
+                <th className="w-[12%] text-center">DTS No.</th>
+                <th className="w-[12%] text-center">Direction</th>
+                <th className="w-[15%]">Document Type</th>
+                <th className="w-[15%] text-center">Archive Date</th>
+                <th className="w-[12%]">Archived By</th>
+                <th className="w-[10%] text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="8" className="text-center py-10 text-slate-400 font-semibold">
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5 text-sky-700" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center text-gray-500 py-12">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-lg font-medium text-gray-600">No Archive Documents Found</p>
-              </div>
-            )}
-          </div>
+                      <span>Loading archived documents...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredDocuments.length > 0 ? (
+                filteredDocuments.map((doc) => {
+                  const direction = doc.documentDirection.toLowerCase();
+                  let directionBadgeClass = "bg-slate-50 text-slate-600 border-slate-200";
+                  if (direction === 'incoming') {
+                    directionBadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200/50";
+                  } else if (direction === 'outgoing') {
+                    directionBadgeClass = "bg-pink-50 text-pink-700 border-pink-200/50";
+                  }
+
+                  const isDisabled = 
+                    (adminDirection === 'incoming' && direction !== 'incoming') ||
+                    (adminDirection === 'outgoing' && direction !== 'outgoing');
+
+                  return (
+                    <tr key={doc.documentid}>
+                      <td className="text-center font-medium text-slate-500 text-xs">
+                        {formatDate(doc.dateReceived)}
+                      </td>
+                      <td className="text-center font-medium text-slate-500 text-xs">
+                        {doc.dateReleased !== '-' ? formatDate(doc.dateReleased) : '-'}
+                      </td>
+                      <td className="text-center font-extrabold text-slate-800 text-xs">
+                        {doc.dtsNo}
+                      </td>
+                      <td className="text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${directionBadgeClass}`}>
+                          {doc.documentDirection}
+                        </span>
+                      </td>
+                      <td className="font-semibold text-slate-700 text-xs max-w-[150px] truncate" title={doc.documentType}>
+                        {doc.documentType}
+                      </td>
+                      <td className="text-center text-slate-500 font-semibold text-xs">
+                        {doc.archiveDate}
+                      </td>
+                      <td className="font-medium text-slate-600 text-xs truncate max-w-[120px]">
+                        {doc.archiveBy}
+                      </td>
+                      <td>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleRestore(doc.documentid)}
+                            className={`p-2 rounded-lg transition-colors cursor-pointer border ${
+                              isDisabled
+                                ? 'opacity-40 cursor-not-allowed text-slate-400 border-slate-100'
+                                : 'text-sky-600 hover:bg-sky-50 border-sky-100'
+                            }`}
+                            title={isDisabled ? "Action restricted" : "Restore Document"}
+                            disabled={isDisabled}
+                          >
+                            <FiRotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(doc.documentid)}
+                            className={`p-2 rounded-lg transition-colors cursor-pointer border ${
+                              isDisabled
+                                ? 'opacity-40 cursor-not-allowed text-slate-400 border-slate-100'
+                                : 'text-pink-600 hover:bg-pink-50 border-pink-100'
+                            }`}
+                            title={isDisabled ? "Action restricted" : "Delete Permanently"}
+                            disabled={isDisabled}
+                          >
+                            <FiTrash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan="8" className="text-center py-16 text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <FiSearch className="w-8 h-8 opacity-30" />
+                      <p className="text-sm font-semibold">No archived documents found</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

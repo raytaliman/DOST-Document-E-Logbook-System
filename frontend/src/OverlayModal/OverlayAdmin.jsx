@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
-import '../index.css'
+import '../index.css';
 
 function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
   const popupRef = useRef(null);
@@ -20,30 +20,30 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
   const currentUser = adminData ? JSON.parse(adminData) : null;
   const isSuperAdmin = currentUser?.usertype === 'superadmin';
 
-  // Prefill form when editing/viewing
   useEffect(() => {
     if (editingDoc) {
       setFormData({
         adminname: editingDoc.adminname || '',
-        adminemail: editingDoc.adminemail || '', 
+        adminemail: editingDoc.adminemail || '',
         documentdirection: editingDoc.documentdirection || '',
         usertype: editingDoc.usertype || 'admin',
         adminpass: '',
         confirmPass: ''
       });
+      setShowPassword(false);
     } else {
       setFormData({
         adminname: '',
         adminemail: '',
         documentdirection: '',
         usertype: 'admin',
-        adminpass: '',
-        confirmPass: ''
+        adminpass: 'd0stregi0n1',
+        confirmPass: 'd0stregi0n1'
       });
+      setShowPassword(true);
     }
   }, [editingDoc]);
 
-  // Automatically adjust documentdirection based on usertype
   useEffect(() => {
     if (isSuperAdmin) {
       if (formData.usertype === 'superadmin') {
@@ -57,49 +57,33 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
   const handleChange = (e) => {
     if (viewMode) return;
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleDirectionChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      documentdirection: e.target.value
-    }));
+    setFormData(prev => ({ ...prev, documentdirection: e.target.value }));
   };
 
   const validate = () => {
     const newErrors = {};
     if (!formData.adminname.trim()) newErrors.adminname = 'Name is required.';
     if (!formData.adminemail.trim()) newErrors.adminemail = 'Email is required.';
-    // Accept only @region1.dost.gov.ph domain
     if (!/^([a-zA-Z0-9._-]+)@region1\.dost\.gov\.ph$/i.test(formData.adminemail.trim().toLowerCase())) {
       newErrors.adminemail = 'Incorrect domain. Use @region1.dost.gov.ph';
     }
-    if (!formData.documentdirection) newErrors.documentdirection = 'Direction is required.';
+    if (editingDoc && !formData.documentdirection && formData.usertype === 'admin') newErrors.documentdirection = 'Direction is required.';
     if (isSuperAdmin && !formData.usertype) newErrors.usertype = 'User type is required.';
-
-    // Password validation
     if (!editingDoc) {
-      // Adding: password and confirm password are required and must match
       if (!formData.adminpass) newErrors.adminpass = 'Password is required.';
       if (!formData.confirmPass) newErrors.confirmPass = 'Confirm password is required.';
-      if (
-        formData.adminpass &&
-        formData.confirmPass &&
-        formData.adminpass !== formData.confirmPass
-      ) {
+      if (formData.adminpass && formData.confirmPass && formData.adminpass !== formData.confirmPass) {
         newErrors.confirmPass = 'Passwords do not match.';
       }
     } else {
-      // Editing: password fields are optional, but if either is filled, both must match
       if ((formData.adminpass || formData.confirmPass) && formData.adminpass !== formData.confirmPass) {
         newErrors.confirmPass = 'Passwords do not match.';
       }
     }
-
     return newErrors;
   };
 
@@ -121,14 +105,13 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
         ...(isSuperAdmin && { usertype: formData.usertype })
       };
 
-      // Check for duplicate email (except when editing the same admin)
       const checkRes = await fetch(`${API_URL}/api/admins`);
       const admins = await checkRes.json();
       const isDuplicate = admins.some(
         (a) => a.adminemail.toLowerCase() === payload.adminemail.toLowerCase() &&
               (!editingDoc || a.adminid !== editingDoc.adminid)
       );
-      
+
       if (isDuplicate) {
         setErrors({ adminemail: 'Email already exists.' });
         setIsSubmitting(false);
@@ -137,14 +120,12 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
 
       let response;
       if (editingDoc) {
-        // Update existing admin
         response = await fetch(`${API_URL}/api/admins/${editingDoc.adminid}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
-        // Add new admin
         response = await fetch(`${API_URL}/api/admins`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -156,142 +137,100 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
         const err = await response.json();
         setErrors({ submit: err.error?.replace('username', 'email') || 'Failed to save admin.' });
         setIsSubmitting(false);
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: err.error?.replace('username', 'email') || 'Failed to save admin.',
-          timer: 2500,
-          showConfirmButton: false,
-          customClass: {
-            popup: 'swal2-minimalist'
-          }
-        });
+        Swal.fire({ icon: 'error', title: 'Error', text: err.error?.replace('username', 'email') || 'Failed to save admin.', timer: 2500, showConfirmButton: false, customClass: { popup: 'swal2-minimalist' } });
         return;
       }
 
-      onClose(true); 
-      Swal.fire({
-        icon: 'success',
-        title: editingDoc ? 'Updated!' : 'Added!',
-        text: editingDoc ? 'Admin updated successfully.' : 'Admin added successfully.',
-        timer: 1500,
-        showConfirmButton: false,
-        customClass: {
-          popup: 'swal2-minimalist'
-        }
-      });
+      onClose(true);
+      Swal.fire({ icon: 'success', title: editingDoc ? 'Updated!' : 'Added!', text: editingDoc ? 'Admin updated successfully.' : 'Admin added successfully.', timer: 1500, showConfirmButton: false, customClass: { popup: 'swal2-minimalist' } });
     } catch (err) {
       setErrors({ submit: 'Failed to save admin.' });
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to save admin.',
-        timer: 2500,
-        showConfirmButton: false,
-        customClass: {
-          popup: 'swal2-minimalist'
-        }
-      });
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save admin.', timer: 2500, showConfirmButton: false, customClass: { popup: 'swal2-minimalist' } });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Keyboard event handlers
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (!isOpen) return;
-      
-      if (event.key === 'Enter' && !viewMode && !isSubmitting) {
-        event.preventDefault();
-        handleSubmit();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose(false);
-      }
+      if (event.key === 'Enter' && !viewMode && !isSubmitting) { event.preventDefault(); handleSubmit(); }
+      else if (event.key === 'Escape') { event.preventDefault(); onClose(false); }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, viewMode, isSubmitting, onClose, handleSubmit]);
 
   if (!isOpen) return null;
 
+  const modeLabel = viewMode ? 'View Admin' : editMode ? 'Edit Admin' : 'Add New Admin';
+  const modeSubtitle = viewMode ? 'Administrator profile details' : editMode ? 'Update admin account credentials' : 'Create a new administrator account';
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30">
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-slate-900/50 backdrop-blur-sm p-4 modal-backdrop">
       <div
         ref={popupRef}
-        className="w-[450px] max-w-full bg-white rounded-[30px] shadow-lg p-8 flex flex-col space-y-6 relative"
+        className="modal-panel w-full max-w-[460px] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          className="absolute top-4 right-4 text-2xl text-black/50 hover:text-black/70 transition-colors cursor-pointer"
-          onClick={onClose}
-        >
-          ×
-        </button>
+        {/* Header Bar */}
+        <div className="modal-header-bar px-6 py-5 flex items-start justify-between flex-shrink-0">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-0.5">Administration</p>
+            <h2 className="text-lg font-extrabold text-white tracking-tight">{modeLabel}</h2>
+            <p className="text-[11px] text-white/60 font-medium mt-0.5">{modeSubtitle}</p>
+          </div>
+          <button
+            onClick={() => onClose(false)}
+            className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer mt-0.5 flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-        <h2 className="text-xl font-bold text-sky-700 text-center">
-          {viewMode ? 'View Admin' : editMode ? 'Edit Admin' : 'Add Admin'}
-        </h2>
+        {/* Form Body */}
+        <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh] scrollbar-hide">
 
-        <div className="space-y-6">
           {/* Name */}
-          <div className="relative">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Name <span className='text-[#F54B4B]'>*</span>
-            </label>
+          <div className="modal-field">
+            <label className="modal-label">Full Name <span className="req">*</span></label>
             <input
               type="text"
               name="adminname"
               placeholder="e.g. Juan Dela Cruz"
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.adminname ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                errors.adminname ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              }`}
+              className={`modal-input ${errors.adminname ? 'error' : ''}`}
               value={formData.adminname}
               onChange={handleChange}
               readOnly={viewMode}
             />
-            {errors.adminname && <p className="text-xs text-red-600 mt-1 px-2">{errors.adminname}</p>}
+            {errors.adminname && <p className="modal-error-msg">{errors.adminname}</p>}
           </div>
 
           {/* Email */}
-          <div className="relative">
-            <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-              Email <span className='text-[#F54B4B]'>*</span>
-            </label>
+          <div className="modal-field">
+            <label className="modal-label">Email Address <span className="req">*</span></label>
             <input
               type="text"
               name="adminemail"
               placeholder="e.g. jdelacruz@region1.dost.gov.ph"
-              className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                errors.adminemail ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-              } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                errors.adminemail ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-              }`}
+              className={`modal-input ${errors.adminemail ? 'error' : ''}`}
               value={formData.adminemail}
               onChange={handleChange}
               readOnly={viewMode}
               autoComplete="off"
             />
-            {errors.adminemail && <p className="text-xs text-red-600 mt-1 px-2">{errors.adminemail}</p>}
+            {errors.adminemail && <p className="modal-error-msg">{errors.adminemail}</p>}
           </div>
 
-          {/* User Type (only for superadmin) */}
+          {/* User Type (superadmin only) */}
           {isSuperAdmin && (
-            <div className="relative">
-              <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-                User Type <span className='text-[#F54B4B]'>*</span>
-              </label>
+            <div className="modal-field">
+              <label className="modal-label">User Type <span className="req">*</span></label>
               <select
                 name="usertype"
-                className={`text-xs w-full h-12 pl-5 pr-10 rounded-full border-2 ${
-                  errors.usertype ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                } bg-white focus:outline-none focus:ring-1 ${
-                  errors.usertype ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                }`}
+                className={`modal-input modal-select ${errors.usertype ? 'error' : ''}`}
                 value={formData.usertype}
                 onChange={handleChange}
                 disabled={viewMode}
@@ -299,25 +238,17 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
                 <option value="admin">Admin</option>
                 <option value="superadmin">Superadmin</option>
               </select>
-              {errors.usertype && (
-                <p className="text-xs text-red-600 mt-1 px-2">{errors.usertype}</p>
-              )}
+              {errors.usertype && <p className="modal-error-msg">{errors.usertype}</p>}
             </div>
           )}
 
           {/* Document Direction */}
-          {formData.usertype === 'admin' && (
-            <div className="relative">
-              <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-                Document Direction <span className='text-[#F54B4B]'>*</span>
-              </label>
+          {formData.usertype === 'admin' && editingDoc && (
+            <div className="modal-field">
+              <label className="modal-label">Document Direction <span className="req">*</span></label>
               <select
                 name="documentdirection"
-                className={`text-xs w-full h-12 pl-5 pr-10 rounded-full border-2 ${
-                  errors.documentdirection ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                } bg-white focus:outline-none focus:ring-1 ${
-                  errors.documentdirection ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                }`}
+                className={`modal-input modal-select ${errors.documentdirection ? 'error' : ''}`}
                 value={formData.documentdirection}
                 onChange={handleDirectionChange}
                 disabled={viewMode}
@@ -326,82 +257,85 @@ function OverlayAdmin({ isOpen, onClose, editingDoc, viewMode, editMode }) {
                 <option value="incoming">Incoming</option>
                 <option value="outgoing">Outgoing</option>
               </select>
-              {errors.documentdirection && (
-                <p className="text-xs text-red-600 mt-1 px-2">{errors.documentdirection}</p>
-              )}
+              {errors.documentdirection && <p className="modal-error-msg">{errors.documentdirection}</p>}
             </div>
           )}
 
-          {/* Password (only for add or edit) */}
+          {/* Password fields */}
           {!viewMode && (
             <>
-              <div className="relative">
-                <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-                  {editMode ? 'New Password' : 'Password'}
-                  {!editMode && <span className='text-[#F54B4B]'> *</span>}
+              <div className="pt-1 border-t border-slate-100">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-3">
+                  {editMode ? 'Update Password (optional)' : 'Set Password'}
+                </p>
+              </div>
+
+              <div className="modal-field">
+                <label className="modal-label">
+                  {editMode ? 'New Password' : 'Password'} {!editMode && <span className="req">*</span>}
                 </label>
                 <input
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   name="adminpass"
-                  placeholder={editMode ? 'Enter new password' : 'Password'}
-                  className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                    errors.adminpass ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                  } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                    errors.adminpass ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                  }`}
+                  placeholder={editMode ? 'Leave blank to keep current' : 'Enter password'}
+                  className={`modal-input ${errors.adminpass ? 'error' : ''}`}
                   value={formData.adminpass}
                   onChange={handleChange}
                   autoComplete="new-password"
                 />
-                {errors.adminpass && <p className="text-xs text-red-600 mt-1 px-2">{errors.adminpass}</p>}
+                {errors.adminpass && <p className="modal-error-msg">{errors.adminpass}</p>}
               </div>
 
-              {/* Confirm Password */}
-              <div className="relative mb-2">
-                <label className="absolute -top-2 left-5 bg-white px-1 text-sky-700 text-xs font-bold z-10">
-                  Confirm {editMode ? 'New ' : ''}Password 
-                  {!editMode && <span className='text-[#F54B4B]'> *</span>}
+              <div className="modal-field">
+                <label className="modal-label">
+                  Confirm {editMode ? 'New ' : ''}Password {!editMode && <span className="req">*</span>}
                 </label>
                 <input
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   name="confirmPass"
                   placeholder={`Confirm ${editMode ? 'new ' : ''}password`}
-                  className={`text-xs w-full h-12 pl-5 pr-4 rounded-full border-2 ${
-                    errors.confirmPass ? 'border-red-600 text-red-600 ring-red-600' : 'border-sky-700 text-sky-950'
-                  } placeholder:text-sky-700/70 focus:outline-none focus:ring-1 ${
-                    errors.confirmPass ? 'focus:ring-red-600' : 'focus:ring-[#004077]'
-                  }`}
+                  className={`modal-input ${errors.confirmPass ? 'error' : ''}`}
                   value={formData.confirmPass}
                   onChange={handleChange}
                   autoComplete="new-password"
                 />
-                {errors.confirmPass && <p className="text-xs text-red-600 mt-1 px-2">{errors.confirmPass}</p>}
+                {errors.confirmPass && <p className="modal-error-msg">{errors.confirmPass}</p>}
               </div>
 
-              {/* Show Password */}
-              <div className="flex items-center ml-3 mb-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
                 <input
                   type="checkbox"
+                  className="w-3.5 h-3.5 accent-[#0b4c95] cursor-pointer"
                   checked={showPassword}
                   onChange={(e) => setShowPassword(e.target.checked)}
-                  className="mr-1 text-sky-700 w-3 h-3"
                 />
-                <label className="text-xs text-sky-700">Show Password</label>
-              </div>
+                <span className="text-xs font-semibold text-slate-500">Show Password</span>
+              </label>
             </>
           )}
+        </div>
 
-          {/* Submit Button */}
+        {/* Footer */}
+        <div className="px-6 py-4 bg-slate-50/60 border-t border-slate-100 flex items-center justify-end gap-3 flex-shrink-0">
+          <button className="modal-cancel-btn" onClick={() => onClose(false)}>
+            {viewMode ? 'Close' : 'Cancel'}
+          </button>
           {!viewMode && (
-            <div className="flex justify-end pt-0.5">
-              <button
-                className="bg-sky-700 hover:bg-sky-800 text-white text-sm font-medium rounded-2xl px-6 py-2 cursor-pointer"
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Saving...' : editMode ? 'Save Changes' : 'Submit'}
-              </button>
-            </div>
+            <button
+              className="modal-submit-btn"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Saving...
+                </>
+              ) : editMode ? 'Save Changes' : 'Create Admin'}
+            </button>
           )}
         </div>
       </div>

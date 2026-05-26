@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import OverlayAdmin from '../OverlayModal/OverlayAdmin';
 import Swal from 'sweetalert2';
-import '../index.css'
+import { FiEye, FiEdit2, FiArchive, FiPlus, FiSearch } from 'react-icons/fi';
+import '../index.css';
 
 function ManageAdmin() {
   const [admins, setAdmins] = useState([]);
@@ -15,18 +16,18 @@ function ManageAdmin() {
   const adminData = localStorage.getItem('admin');
   const currentAdminDirection = adminData ? JSON.parse(adminData).documentdirection : null;
   const API_URL = import.meta.env.VITE_API_URL;
-  const getUnit = (direction) => direction?.toLowerCase() === 'incoming' ? 'ORD' : 'Budget and Finance Unit';
-  
+  const getUnit = (direction) => direction?.toLowerCase() === 'incoming' ? 'ORD (Office of the Regional Director)' : 'Budget and Finance Unit';
+
   // Fetch admins
   const fetchAdmins = async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/admins`);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       // Filter to only include usertype 'admin' and exclude 'superadmin'
       const filteredAdmins = data.filter(admin => admin.usertype === 'admin');
@@ -37,7 +38,7 @@ function ManageAdmin() {
       setLoading(false);
       Swal.fire({
         icon: 'error',
-        title: 'Failed to load admins',
+        title: 'Failed to Load Admins',
         text: 'Please try again.',
         timer: 2500,
         showConfirmButton: false,
@@ -50,7 +51,7 @@ function ManageAdmin() {
 
   useEffect(() => {
     fetchAdmins();
-  }, []); 
+  }, []);
 
   const handleAddRecord = () => {
     setSelectedAdmin(null);
@@ -79,9 +80,8 @@ function ManageAdmin() {
       text: 'Do you want to archive this admin?',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
       confirmButtonText: 'Yes, archive it!',
+      cancelButtonText: 'Cancel',
       customClass: {
         popup: 'swal2-minimalist'
       }
@@ -90,7 +90,6 @@ function ManageAdmin() {
 
     setArchivingId(adminId);
     try {
-      // Format date as "Month Day, Year" (e.g., June 12, 2025)
       const archivedate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -104,7 +103,7 @@ function ManageAdmin() {
         },
         body: JSON.stringify({
           isarchive: true,
-          archivedate // formatted as "June 12, 2025"
+          archivedate
         })
       });
 
@@ -112,7 +111,7 @@ function ManageAdmin() {
         setAdmins(prev => prev.filter(admin => admin.adminid !== adminId));
         Swal.fire({
           icon: 'success',
-          title: 'Archived!',
+          title: 'Archived Successfully',
           text: 'Admin has been archived.',
           timer: 1800,
           showConfirmButton: false,
@@ -124,7 +123,7 @@ function ManageAdmin() {
         const error = await response.json();
         Swal.fire({
           icon: 'error',
-          title: 'Failed to archive',
+          title: 'Failed to Archive',
           text: error.message || 'Failed to archive admin. Please try again.',
           timer: 2500,
           showConfirmButton: false,
@@ -149,7 +148,6 @@ function ManageAdmin() {
     }
   };
 
-  // Filter admins based on search term
   const filteredAdmins = admins.filter(admin => {
     const search = searchTerm.toLowerCase();
     const unit = getUnit(admin.documentdirection)?.toLowerCase();
@@ -163,154 +161,140 @@ function ManageAdmin() {
   });
 
   return (
-    <div className="p-1 relative">
-      {/* Header with search */}
-      <div className="flex flex-wrap justify-end gap-x-2 mb-4">
-        {/* Search */}
-        <div className="flex flex-col items-start">
-          <div className="relative w-80 h-11 bg-neutral-100 rounded-2xl shadow-sm border border-sky-700 flex items-center px-4">
+    <div className="p-2 space-y-6">
+      {/* Header Panel with Controls */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Manage Admins</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Create, view, and configure admin permissions</p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Search bar */}
+          <div className="relative w-80 h-10 bg-white border border-slate-200/80 rounded-xl shadow-2xs flex items-center px-3.5 focus-within:border-[#0b4c95] focus-within:ring-4 focus-within:ring-sky-500/10 transition-all duration-200">
+            <FiSearch className="text-slate-400 w-4 h-4 mr-2 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Search Records..."
-              className="w-full bg-transparent outline-none text-sky-950 text-sm"
+              placeholder="Search by name, email, or unit..."
+              className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-xs font-semibold"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <img src="./searchIcon.svg" alt="Search" className="w-5 h-5" />
           </div>
-        </div>
 
-        {/* Add Admin Button */}
-        <div className="flex flex-col items-start">
+          {/* Add Admin Button */}
           <button
             onClick={handleAddRecord}
-            className="h-11 bg-sky-700 rounded-2xl shadow-sm flex items-center justify-center px-4 text-white font-semibold text-lg cursor-pointer transition-colors w-40 hover:bg-[#1460A2]"
+            className="btn-dost-blue px-4 h-10 rounded-xl flex items-center justify-center gap-2 text-xs font-bold shadow-md shadow-sky-900/15 cursor-pointer hover:-translate-y-0.5"
           >
-            Add Admin
-            <svg 
-              className="w-4 h-4 ml-2"
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <FiPlus className="w-4 h-4" />
+            <span>Add Admin</span>
           </button>
         </div>
       </div>
 
-      {/* Admin Table */}
-      <div className="overflow-x-auto">
-        <div className="min-w-[1200px]">
-          {/* Table Header */}
-          <div className="bg-sky-700 h-15 flex items-center rounded-lg px-2 text-white font-bold text-sm">
-            <div className="w-[15%] min-w-[120px] px-2 text-center select-none flex items-center justify-center">
-              DATE CREATED
-            </div>
-            <div className="w-[15%] min-w-[120px] px-2 text-center">ADMIN NAME</div>
-            <div className="w-[20%] min-w-[180px] px-2 text-center">EMAIL</div>
-            <div className="w-[20%] min-w-[180px] px-2 text-center">UNIT</div>
-            <div className="w-[15%] min-w-[120px] px-2 text-center">DOCUMENT DIRECTION</div>
-            <div className="w-[15%] min-w-[120px] px-2 text-center">ACTIONS</div>
-          </div>
-          
-          {/* Table Body */}
-          <div
-            className="w-full flex-1 overflow-y-auto scrollbar-hide"
-            style={{ minHeight: 0, maxHeight: 'calc(100vh - 260px)' }}
-          >
-            {loading ? (
-              <div className="flex justify-center items-center h-32 border-b border-gray-200 min-w-[900px]">
-                <p className="text-gray-500">Loading admins...</p>
-              </div>
-            ) : filteredAdmins.length > 0 ? (
-              filteredAdmins.map((admin) => (
-                <div key={admin.adminid} className="min-w-[900px] px-2 h-14 flex items-center hover:bg-sky-50 border-b border-[#1460A2]/50">
-                  {/* Date Created */}
-                  <div className="w-[15%] min-w-[120px] px-2 text-gray-600 text-center text-sm">
-                    {admin.datecreated ? new Date(admin.datecreated).toLocaleDateString('en-US', {
-                      month: 'long', day: 'numeric', year: 'numeric'
-                    }) : '-'}
-                  </div>
-                  
-                  {/* Admin Name */}
-                  <div className="w-[15%] min-w-[120px] px-2 text-black text-center font-bold text-sm">
-                    {admin.adminname}
-                  </div>
-                  
-                  {/* Email */}
-                  <div className="w-[20%] min-w-[180px] px-2 text-black text-center text-sm">
-                    {admin.adminemail}
-                  </div>
-                  
-                  {/* Unit */}
-                  <div className="w-[20%] min-w-[180px] px-2 text-black text-center text-sm">
-                    {getUnit(admin.documentdirection)}
-                  </div>
-                  
-                  {/* Document Direction */}
-                  <div className="w-[15%] min-w-[120px] px-2 text-center">
-                    <span className={`inline-block px-4 py-2 rounded-full text-sm text-black`}>
-                      {admin.documentdirection?.charAt(0).toUpperCase() + admin.documentdirection?.slice(1)}
-                    </span>
-                  </div>
-                  
-                  {/* Actions */}
-                  <div className="w-[15%] min-w-[120px] px-2 flex justify-center space-x-1">
-                    <button 
-                      onClick={() => handleView(admin)}
-                      className="p-2 bg-[#45A3F5] text-white rounded-lg hover:bg-[#1E87DC] transition-colors cursor-pointer"
-                      title="View"
-                    >
-                      <img src="/viewIcon.svg" alt="View" className="w-3 h-3" />
-                    </button>
-                    <button 
-                      onClick={() => handleEdit(admin)}
-                      className="p-2 bg-[#28A745] text-white rounded-lg hover:bg-[#218838] transition-colors cursor-pointer"
-                      title="Edit"
-                    >
-                      <img src="/editIcon.svg" alt="Edit" className="w-3 h-3" />
-                    </button>
-                    <button 
-                      onClick={() => handleArchive(admin.adminid)}
-                      className={
-                        `p-2 bg-[#FF9500] text-white rounded-lg transition-colors cursor-pointer 
-                        ${archivingId === admin.adminid ? 'pointer-events-none' : ''} 
-                        ${
-                          (currentAdminDirection === 'incoming' && admin.documentdirection?.toLowerCase() !== 'incoming') ||
-                          (currentAdminDirection === 'outgoing' && admin.documentdirection?.toLowerCase() !== 'outgoing')
-                            ? 'opacity-50 pointer-events-none'
-                            : 'hover:bg-[#CC7A00]'
-                        }`
-                      }
-                      title="Archive"
-                      disabled={
-                        archivingId === admin.adminid ||
-                        (currentAdminDirection === 'incoming' && admin.documentdirection?.toLowerCase() !== 'incoming') ||
-                        (currentAdminDirection === 'outgoing' && admin.documentdirection?.toLowerCase() !== 'outgoing')
-                      }
-                    >
-                      {archivingId === admin.adminid ? (
-                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4" fill="none"/>
-                          <path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8v8z"/>
-                        </svg>
-                      ) : (
-                        <img src="/archiveIcon.svg" alt="Archive" className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center text-gray-500 py-12">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-lg font-medium text-gray-600">No Admins Found</p>
-              </div>
-            )}
-          </div>
+      {/* Admin Table Container */}
+      <div className="table-container-premium shadow-2xs">
+        <div className="overflow-x-auto">
+          <table className="table-premium w-full text-left border-collapse">
+            <thead>
+              <tr>
+                <th className="w-[15%] text-center">Date Created</th>
+                <th className="w-[20%]">Admin Name</th>
+                <th className="w-[25%]">Email</th>
+                <th className="w-[20%]">Unit</th>
+                <th className="w-[10%] text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-10 text-slate-400 font-semibold">
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5 text-sky-700" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Loading admin records...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredAdmins.length > 0 ? (
+                filteredAdmins.map((admin) => {
+                  const direction = admin.documentdirection?.toLowerCase();
+                  let directionBadgeClass = "bg-slate-50 text-slate-600 border-slate-200";
+                  if (direction === 'incoming') {
+                    directionBadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200/50";
+                  } else if (direction === 'outgoing') {
+                    directionBadgeClass = "bg-pink-50 text-pink-700 border-pink-200/50";
+                  }
+
+                  const isArchiveDisabled =
+                    archivingId === admin.adminid ||
+                    (currentAdminDirection === 'incoming' && direction !== 'incoming') ||
+                    (currentAdminDirection === 'outgoing' && direction !== 'outgoing');
+
+                  return (
+                    <tr key={admin.adminid}>
+                      <td className="text-center font-medium text-slate-500 text-xs">
+                        {admin.datecreated ? new Date(admin.datecreated).toLocaleDateString('en-US', {
+                          month: 'short', day: 'numeric', year: 'numeric'
+                        }) : '-'}
+                      </td>
+                      <td className="font-extrabold text-slate-800 text-xs">{admin.adminname}</td>
+                      <td className="text-slate-600 font-medium text-xs">{admin.adminemail}</td>
+                      <td className="text-slate-500 font-semibold text-xs">{getUnit(admin.documentdirection)}</td>
+                      <td>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleView(admin)}
+                            className="p-2 text-sky-600 hover:bg-sky-50 border border-sky-100 rounded-lg transition-colors cursor-pointer"
+                            title="View Details"
+                          >
+                            <FiEye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(admin)}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 border border-emerald-100 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Admin"
+                          >
+                            <FiEdit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleArchive(admin.adminid)}
+                            className={`p-2 rounded-lg transition-colors cursor-pointer border ${isArchiveDisabled
+                                ? 'opacity-40 cursor-not-allowed text-slate-400 border-slate-100'
+                                : 'text-pink-600 hover:bg-pink-50 border-pink-100'
+                              }`}
+                            title={isArchiveDisabled ? "Action restricted" : "Archive Admin"}
+                            disabled={isArchiveDisabled}
+                          >
+                            {archivingId === admin.adminid ? (
+                              <svg className="w-3.5 h-3.5 animate-spin text-pink-600" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                              </svg>
+                            ) : (
+                              <FiArchive className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan="6" className="text-center py-16 text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <FiSearch className="w-8 h-8 opacity-30" />
+                      <p className="text-sm font-semibold">No admins found</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
