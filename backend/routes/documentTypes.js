@@ -37,6 +37,35 @@ module.exports = (app) => {
     }
   });
 
+  // Update document type
+  app.put('/api/document-types/:id', async (req, res) => {
+    const { id } = req.params;
+    const { documenttype } = req.body;
+    if (!documenttype || !documenttype.trim()) {
+      return res.status(400).json({ error: 'Document type is required' });
+    }
+    try {
+      const existing = await pool.query(
+        'SELECT * FROM tbldocumenttype WHERE documenttype = $1 AND documentid != $2 LIMIT 1',
+        [documenttype.trim(), parseInt(id)]
+      );
+      if (existing.rows[0]) {
+        return res.status(400).json({ error: 'Document type already exists' });
+      }
+      const result = await pool.query(
+        'UPDATE tbldocumenttype SET documenttype = $1 WHERE documentid = $2 RETURNING *',
+        [documenttype.trim(), parseInt(id)]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Document type not found' });
+      }
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Failed to update document type:', error);
+      res.status(500).json({ error: 'Failed to update document type', details: error.message });
+    }
+  });
+
   // Delete document type
   app.delete('/api/document-types/:id', async (req, res) => {
     const { id } = req.params;

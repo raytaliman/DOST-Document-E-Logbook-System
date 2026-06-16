@@ -25,6 +25,11 @@ require('./routes/documents')(app, io);
 require('./routes/incoming')(app, io);
 require('./routes/documentTypes')(app, io);
 require('./routes/admins')(app, io);
+require('./routes/holidays')(app, io);
+require('./routes/settings')(app, io);
+require('./routes/payees')(app, io);
+require('./routes/routes')(app, io);
+require('./routes/audit')(app);
 
 io.on('connection', (socket) => {
     console.log('a user connected');

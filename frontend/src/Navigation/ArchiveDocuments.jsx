@@ -260,7 +260,7 @@ function ArchiveDocuments() {
   );
 
   return (
-    <div className="p-2 space-y-6">
+    <div className="space-y-6">
       {/* Header Panel with Controls */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

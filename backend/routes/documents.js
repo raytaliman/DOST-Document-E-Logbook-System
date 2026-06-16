@@ -1,13 +1,37 @@
 const { pool } = require('../db/pool');
 const formatDateForDatabase = require('../utils/formatDate');
 
+// ---------- Audit helper ----------
+async function logAudit(client, { documentid, action, changedby, changes }) {
+  await client.query(
+    `INSERT INTO tbldocument_audit (documentid, action, changedby, changedat, changes)
+     VALUES ($1, $2, $3, NOW(), $4)`,
+    [documentid, action, changedby || 'System', changes ? JSON.stringify(changes) : null]
+  );
+}
+
+// Build a diff object: { field: { old, new } } — only includes changed fields
+function diffFields(oldDoc, newDoc, fields) {
+  const changes = {};
+  for (const field of fields) {
+    const o = oldDoc[field] ?? null;
+    const n = newDoc[field] ?? null;
+    // Normalise to string for comparison (handles numeric/null mismatches)
+    if (String(o) !== String(n)) {
+      changes[field] = { old: o, new: n };
+    }
+  }
+  return Object.keys(changes).length > 0 ? changes : null;
+}
+// ----------------------------------
+
 module.exports = (app, io) => {
   // Get all documents
   app.get('/api/documents', async (req, res) => {
     try {
       const { direction } = req.query;
       let query = `
-        SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, isarchive, documentdirection, calcnetworkdays, deducteddays, networkdaysremarks 
+        SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, isarchive, documentdirection, calcnetworkdays, deducteddays, networkdaysremarks, daysprocessed, processedby, payee, amount, seriesno, particulars, queueno, include_friday 
         FROM tbldocuments
       `;
       const params = [];
@@ -27,9 +51,8 @@ module.exports = (app, io) => {
 
   // Create document
   app.post('/api/documents', async (req, res) => {
-    const { dtsno, documenttype, route, remarks, datesent, datereleased } = req.body;
+    const { dtsno, documenttype, route, remarks, datesent, datereleased, processedby, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
     
-    // Validate required fields
     if (!dtsno || !documenttype || !route) {
       return res.status(400).json({ 
         error: 'Missing required fields', 
@@ -38,65 +61,117 @@ module.exports = (app, io) => {
     }
   
     try {
-      // For outgoing documents, datesent should be provided as timestamp string
       if (!datesent || !datesent.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
         return res.status(400).json({ error: 'Invalid Date Sent format' });
       }
-  
-      // datereleased should be in the formatted string
       if (!datereleased || !datereleased.match(/^[A-Za-z]+ \d{1,2}, \d{4} at \d{1,2}:\d{2} [AP]M$/)) {
         return res.status(400).json({ error: 'Invalid Date Received format' });
       }
+
       const moment = require("moment-timezone");
       const datesentDate = moment.tz(datesent, "YYYY-MM-DD HH:mm:ss", "Asia/Manila").toDate();
 
-      const result = await pool.query(
-        `INSERT INTO tbldocuments 
-         (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
-         RETURNING *`,
-        [
-          dtsno.trim().toUpperCase(),
-          documenttype.trim(),
-          route.trim(),
-          remarks?.trim() || null,
-          'outgoing',
-          datesentDate,
-          datereleased,
-          null,
-          false
-        ]
-      );
-      
-      res.status(201).json(result.rows[0]);
-      io.emit('documents_updated');
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+          `INSERT INTO tbldocuments 
+            (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive, processedby, payee, amount, seriesno, particulars, queueno, include_friday) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
+            RETURNING *`,
+          [
+            dtsno.trim().toUpperCase(),
+            documenttype.trim(),
+            route.trim(),
+            remarks?.trim() || null,
+            'outgoing',
+            datesentDate,
+            datereleased,
+            null,
+            false,
+            processedby?.trim() || null,
+            payee?.trim() || null,
+            amount ? parseFloat(amount) : null,
+            seriesno?.trim() || null,
+            particulars?.trim() || null,
+            queueno?.trim() || null,
+            include_friday === undefined ? true : (include_friday === true || include_friday === 'true')
+          ]
+        );
+
+        const newDoc = result.rows[0];
+        await logAudit(client, {
+          documentid: newDoc.documentid,
+          action: 'CREATE',
+          changedby: processedby?.trim() || 'System',
+          changes: {
+            dtsno: { old: null, new: newDoc.dtsno },
+            documenttype: { old: null, new: newDoc.documenttype },
+            route: { old: null, new: newDoc.route },
+            remarks: { old: null, new: newDoc.remarks },
+            datesent: { old: null, new: datesent },
+            datereleased: { old: null, new: newDoc.datereleased },
+            processedby: { old: null, new: newDoc.processedby },
+            payee: { old: null, new: newDoc.payee },
+            amount: { old: null, new: newDoc.amount },
+            seriesno: { old: null, new: newDoc.seriesno },
+            particulars: { old: null, new: newDoc.particulars },
+            queueno: { old: null, new: newDoc.queueno },
+            include_friday: { old: null, new: newDoc.include_friday },
+          }
+        });
+
+        await client.query('COMMIT');
+        res.status(201).json(newDoc);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error('Create document error:', error);
-      res.status(500).json({ 
-        error: 'Database operation failed', 
-        message: error.message 
-      });
+      res.status(500).json({ error: 'Database operation failed', message: error.message });
     }
   });
 
   // Update document
   app.put('/api/documents/:id', async (req, res) => {
     const { id } = req.params;
-    const { dtsno, documenttype, route, remarks, time, datereleased } = req.body;
+    console.log('PUT /api/documents/:id body:', req.body);
+    const { dtsno, documenttype, route, remarks, time, datereleased, datesent, processedby, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
     
     try {
-        // Handle time-only updates for 'All Documents' page quick edit
+        // Time-only quick edit
         if (Object.keys(req.body).length === 1 && typeof time !== 'undefined') {
             const timeValue = time === '' || time === '-' ? null : time;
-            const result = await pool.query(
+            const client = await pool.connect();
+            try {
+              await client.query('BEGIN');
+              const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+              const oldDoc = oldRes.rows[0];
+              const result = await client.query(
                 'UPDATE tbldocuments SET time = $1 WHERE documentid = $2 RETURNING *',
                 [timeValue, parseInt(id)]
-            );
-            io.emit('documents_updated');
-            return res.json(result.rows[0]);
+              );
+              const newDoc = result.rows[0];
+              const changes = diffFields(oldDoc, newDoc, ['time']);
+              if (changes) {
+                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
+              }
+              await client.query('COMMIT');
+              io.emit('documents_updated');
+              return res.json(newDoc);
+            } catch (err) {
+              await client.query('ROLLBACK');
+              throw err;
+            } finally {
+              client.release();
+            }
         }
 
-        // Validate required fields for full updates
         if (!dtsno || !documenttype || !route) {
             return res.status(400).json({ 
                 error: 'Missing required fields', 
@@ -104,53 +179,117 @@ module.exports = (app, io) => {
             });
         }
 
-        const timeValue = time === '' || time === '-' ? null : time;
-        const remarksValue = remarks?.trim() || null;
-        
-        let query, params;
-        if (typeof datereleased !== 'undefined') {
-            query = `
-                UPDATE tbldocuments 
-                SET dtsno = $1, documenttype = $2, route = $3, remarks = $4, time = $5, documentdirection = $6, datereleased = $7
-                WHERE documentid = $8 
-                RETURNING *
-            `;
-            params = [
-                dtsno.trim().toUpperCase(),
-                documenttype.trim(),
-                route.trim(),
-                remarksValue,
-                timeValue,
-                'outgoing',
-                datereleased, // could be a string or null
-                parseInt(id)
-            ];
-        } else {
-            query = `
-                UPDATE tbldocuments 
-                SET dtsno = $1, documenttype = $2, route = $3, remarks = $4, time = $5, documentdirection = $6
-                WHERE documentid = $7 
-                RETURNING *
-            `;
-            params = [
-                dtsno.trim().toUpperCase(),
-                documenttype.trim(),
-                route.trim(),
-                remarksValue,
-                timeValue,
-                'outgoing',
-                parseInt(id)
-            ];
+        if (datesent && !datesent.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+            return res.status(400).json({ error: 'Invalid Date Sent format' });
         }
 
-        const result = await pool.query(query, params);
-        const updatedDoc = result.rows[0];
-        if (!updatedDoc) {
+        const moment = require("moment-timezone");
+        const datesentDate = datesent 
+            ? moment.tz(datesent, "YYYY-MM-DD HH:mm:ss", "Asia/Manila").toDate()
+            : null;
+
+        const remarksValue = remarks?.trim() || null;
+        const timeProvided = typeof time !== 'undefined';
+        const timeValue = timeProvided ? (time === '' || time === '-' ? null : time) : undefined;
+
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          // Fetch old record for diff
+          const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+          const oldDoc = oldRes.rows[0];
+          if (!oldDoc) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Document not found' });
+          }
+
+          let query, params;
+          if (typeof datereleased !== 'undefined') {
+              query = `
+                  UPDATE tbldocuments 
+                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
+                      time = CASE WHEN $5::boolean THEN $6 ELSE time END,
+                      datereleased = $7, datesent = COALESCE($8, datesent),
+                      processedby = COALESCE($9, processedby),
+                      payee = $10, amount = $11, seriesno = $12, particulars = $13, queueno = $14,
+                      include_friday = $15
+                  WHERE documentid = $16 
+                  RETURNING *
+              `;
+              params = [
+                  dtsno.trim().toUpperCase(),
+                  documenttype.trim(),
+                  route.trim(),
+                  remarksValue,
+                  timeProvided,
+                  timeProvided ? timeValue : null,
+                  datereleased,
+                  datesentDate,
+                  processedby?.trim() || null,
+                  payee?.trim() || null,
+                  amount ? parseFloat(amount) : null,
+                  seriesno?.trim() || null,
+                  particulars?.trim() || null,
+                  queueno?.trim() || null,
+                  include_friday === undefined ? true : (include_friday === true || include_friday === 'true'),
+                  parseInt(id)
+              ];
+          } else {
+              query = `
+                  UPDATE tbldocuments 
+                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
+                      time = CASE WHEN $5::boolean THEN $6 ELSE time END,
+                      datesent = COALESCE($7, datesent),
+                      processedby = COALESCE($8, processedby),
+                      payee = $9, amount = $10, seriesno = $11, particulars = $12, queueno = $13,
+                      include_friday = $14
+                  WHERE documentid = $15 
+                  RETURNING *
+              `;
+              params = [
+                  dtsno.trim().toUpperCase(),
+                  documenttype.trim(),
+                  route.trim(),
+                  remarksValue,
+                  timeProvided,
+                  timeProvided ? timeValue : null,
+                  datesentDate,
+                  processedby?.trim() || null,
+                  payee?.trim() || null,
+                  amount ? parseFloat(amount) : null,
+                  seriesno?.trim() || null,
+                  particulars?.trim() || null,
+                  queueno?.trim() || null,
+                  include_friday === undefined ? true : (include_friday === true || include_friday === 'true'),
+                  parseInt(id)
+              ];
+          }
+
+          const result = await client.query(query, params);
+          const updatedDoc = result.rows[0];
+
+          // Log only changed fields
+          const trackedFields = ['dtsno','documenttype','route','remarks','time','datereleased','datesent','processedby','payee','amount','seriesno','particulars','queueno', 'include_friday'];
+          const changes = diffFields(oldDoc, updatedDoc, trackedFields);
+          if (changes) {
+            await logAudit(client, {
+              documentid: parseInt(id),
+              action: 'UPDATE',
+              changedby: processedby?.trim() || 'System',
+              changes
+            });
+          }
+
+          await client.query('COMMIT');
+          res.json(updatedDoc);
+          io.emit('documents_updated');
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        } finally {
+          client.release();
         }
-        
-        res.json(updatedDoc);
-        io.emit('documents_updated');
     } catch (error) {
         console.error('Update document error:', error);
         res.status(500).json({ 
@@ -184,17 +323,34 @@ module.exports = (app, io) => {
     const { id } = req.params;
     const { archivedate, archivedby } = req.body;
     try {
-      const documentRes = await pool.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
-      const document = documentRes.rows[0];
-      if (!document) {
-        return res.status(404).json({ error: 'Document not found' });
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const documentRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+        const document = documentRes.rows[0];
+        if (!document) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        const updatedDocRes = await client.query(
+          'UPDATE tbldocuments SET isarchive = true, archivedate = $1, archivedby = $2 WHERE documentid = $3 RETURNING *',
+          [archivedate, archivedby || 'ITSM', parseInt(id)]
+        );
+        await logAudit(client, {
+          documentid: parseInt(id),
+          action: 'ARCHIVE',
+          changedby: archivedby || 'ITSM',
+          changes: { isarchive: { old: false, new: true }, archivedate: { old: null, new: archivedate } }
+        });
+        await client.query('COMMIT');
+        res.json(updatedDocRes.rows[0]);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
       }
-      const updatedDocRes = await pool.query(
-        'UPDATE tbldocuments SET isarchive = true, archivedate = $1, archivedby = $2 WHERE documentid = $3 RETURNING *',
-        [archivedate, archivedby || 'ITSM', parseInt(id)]
-      );
-      res.json(updatedDocRes.rows[0]);
-      io.emit('documents_updated');
     } catch (error) {
       console.error('Archive document error:', error);
       res.status(500).json({ error: 'Database operation failed', message: error.message, code: error.code });
@@ -205,16 +361,33 @@ module.exports = (app, io) => {
   app.put('/api/documents/:id/restore', async (req, res) => {
     const { id } = req.params;
     try {
-      const updatedDocRes = await pool.query(
-        'UPDATE tbldocuments SET isarchive = false, archivedate = NULL, archivedby = NULL WHERE documentid = $1 RETURNING *',
-        [parseInt(id)]
-      );
-      const updatedDoc = updatedDocRes.rows[0];
-      if (!updatedDoc) {
-        return res.status(404).json({ error: 'Document not found' });
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updatedDocRes = await client.query(
+          'UPDATE tbldocuments SET isarchive = false, archivedate = NULL, archivedby = NULL WHERE documentid = $1 RETURNING *',
+          [parseInt(id)]
+        );
+        const updatedDoc = updatedDocRes.rows[0];
+        if (!updatedDoc) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        await logAudit(client, {
+          documentid: parseInt(id),
+          action: 'RESTORE',
+          changedby: 'System',
+          changes: { isarchive: { old: true, new: false } }
+        });
+        await client.query('COMMIT');
+        res.json(updatedDoc);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
       }
-      res.json(updatedDoc);
-      io.emit('documents_updated');
     } catch (error) {
       console.error('Restore document error:', error);
       res.status(500).json({ error: 'Database operation failed', message: error.message, code: error.code });
@@ -225,7 +398,7 @@ module.exports = (app, io) => {
   app.get('/api/documents/archived', async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, archivedate, archivedby, documentdirection 
+        `SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, archivedate, archivedby, documentdirection, daysprocessed, payee, amount, seriesno, particulars, queueno, include_friday 
          FROM tbldocuments 
          WHERE isarchive = true 
          ORDER BY archivedate DESC`
@@ -242,29 +415,50 @@ module.exports = (app, io) => {
     const { id } = req.params;
     const { deducteddays, calcnetworkdays, remarks } = req.body;
     try {
-      const documentRes = await pool.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
-      const document = documentRes.rows[0];
-      if (!document) {
-        return res.status(404).json({ error: 'Document not found' });
-      }
-      
-      const deducteddaysVal = deducteddays !== null && deducteddays !== undefined 
-        ? parseInt(deducteddays, 10) 
-        : null;
-      const calcnetworkdaysVal = calcnetworkdays !== null && calcnetworkdays !== undefined 
-        ? parseInt(calcnetworkdays, 10) 
-        : null;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const documentRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+        const document = documentRes.rows[0];
+        if (!document) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Document not found' });
+        }
         
-      const updatedDocRes = await pool.query(
-        'UPDATE tbldocuments SET deducteddays = $1, calcnetworkdays = $2, networkdaysremarks = $3 WHERE documentid = $4 RETURNING *',
-        [deducteddaysVal, calcnetworkdaysVal, remarks || null, parseInt(id)]
-      );
-      
-      res.json(updatedDocRes.rows[0]);
-      io.emit('documents_updated');
+        const deducteddaysVal = deducteddays !== null && deducteddays !== undefined 
+          ? parseInt(deducteddays, 10) 
+          : null;
+        const calcnetworkdaysVal = calcnetworkdays !== null && calcnetworkdays !== undefined 
+          ? parseInt(calcnetworkdays, 10) 
+          : null;
+          
+        const updatedDocRes = await client.query(
+          'UPDATE tbldocuments SET deducteddays = $1, calcnetworkdays = $2, networkdaysremarks = $3 WHERE documentid = $4 RETURNING *',
+          [deducteddaysVal, calcnetworkdaysVal, remarks || null, parseInt(id)]
+        );
+
+        const changes = diffFields(document, updatedDocRes.rows[0], ['deducteddays', 'calcnetworkdays', 'networkdaysremarks']);
+        if (changes) {
+          await logAudit(client, {
+            documentid: parseInt(id),
+            action: 'PROCESSING_DAYS',
+            changedby: 'System',
+            changes
+          });
+        }
+
+        await client.query('COMMIT');
+        res.json(updatedDocRes.rows[0]);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error('Update network days error:', error);
       res.status(500).json({ error: 'Failed to update network days', message: error.message });
     }
   });
-}; 
+};

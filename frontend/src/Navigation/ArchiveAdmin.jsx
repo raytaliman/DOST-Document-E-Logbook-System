@@ -12,7 +12,13 @@ function ArchiveAdmin() {
   const API_URL = import.meta.env.VITE_API_URL;
   const adminData = localStorage.getItem('admin');
   const adminDirection = adminData ? JSON.parse(adminData).documentdirection : null;
-  const getUnit = (direction) => direction?.toLowerCase() === 'incoming' ? 'ORD (Office of the Regional Director)' : 'Budget and Finance Unit';
+  const getUnit = (direction) => {
+    const dir = direction?.toLowerCase();
+    if (dir === 'incoming') return 'ORD (Office of the Regional Director)';
+    if (dir === 'outgoing') return 'Budget and Finance Unit';
+    if (dir === 'all') return 'ITSM (Information Technology Services Management)';
+    return 'General Administration';
+  };
 
   // Fetch archived admins
   const fetchAdmins = async () => {
@@ -191,8 +197,8 @@ function ArchiveAdmin() {
       {/* Header Panel with Controls */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Archive Admins</h1>
-          <p className="text-xs text-slate-400 mt-0.5 font-medium">Review, restore, or permanently delete archived admin accounts</p>
+          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Archive Users</h1>
+          <p className="text-xs text-slate-400 mt-0.5 font-medium">Review, restore, or permanently delete archived user accounts</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -201,7 +207,7 @@ function ArchiveAdmin() {
             <FiSearch className="text-slate-400 w-4 h-4 mr-2 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Search archived admins..."
+              placeholder="Search archived users..."
               className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-xs font-semibold"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -217,7 +223,7 @@ function ArchiveAdmin() {
             <thead>
               <tr>
                 <th className="w-[15%] text-center">Date Created</th>
-                <th className="w-[20%]">Admin Name</th>
+                <th className="w-[20%]">User Name</th>
                 <th className="w-[25%]">Email</th>
                 <th className="w-[15%]">Unit</th>
                 <th className="w-[10%] text-center">Direction</th>

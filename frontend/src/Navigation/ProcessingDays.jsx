@@ -3,7 +3,7 @@ import OverlayProcessingDays from '../OverlayModal/OverlayProcessingDays';
 import Swal from 'sweetalert2'; 
 import { io } from 'socket.io-client';
 import moment from 'moment';
-import { FiEdit2, FiSlash, FiSearch, FiChevronDown, FiDownload } from 'react-icons/fi';
+import { FiEdit2, FiSlash, FiSearch, FiChevronDown, FiDownload, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import '../index.css';
 
 function calculateNetworkDays(startDate, endDate) {
@@ -44,6 +44,65 @@ function parseDateReleased(dateStr) {
   return isNaN(dateOnly.getTime()) ? null : dateOnly;
 }
 
+const formatDate = (dateString) => {
+  if (!dateString || dateString === '-') return '-';
+  if (moment.isMoment(dateString))
+    return dateString.format('MMMM D, YYYY [at] h:mm A');
+  try {
+    if (
+      typeof dateString === 'string' &&
+      (dateString.includes(' at ') ||
+        dateString.match(/^[A-Z][a-z]+ \d{1,2}, \d{4}/))
+    ) {
+      return dateString;
+    }
+    const m = moment(dateString);
+    return m.isValid() ? m.format('MMMM D, YYYY [at] h:mm A') : '-';
+  } catch (e) {
+    return '-';
+  }
+};
+
+const formatDateOnly = (dateString) => {
+  if (!dateString || dateString === '-') return '-';
+  if (moment.isMoment(dateString))
+    return dateString.format('MMMM D, YYYY');
+  try {
+    if (typeof dateString === 'string') {
+      const atIndex = dateString.indexOf(' at ');
+      if (atIndex !== -1) {
+        return dateString.substring(0, atIndex).trim();
+      }
+      const match = dateString.match(/^([A-Za-z]+ \d{1,2}, \d{4})/);
+      if (match) {
+        return match[1];
+      }
+    }
+    const m = moment(dateString);
+    return m.isValid() ? m.format('MMMM D, YYYY') : '-';
+  } catch (e) {
+    return '-';
+  }
+};
+
+const formatTimeOnly = (dateString) => {
+  if (!dateString || dateString === '-') return '-';
+  if (moment.isMoment(dateString))
+    return dateString.format('h:mm A');
+  try {
+    if (typeof dateString === 'string') {
+      const atIndex = dateString.indexOf(' at ');
+      if (atIndex !== -1) {
+        return dateString.substring(atIndex + 4).trim();
+      }
+    }
+    const m = moment(dateString);
+    return m.isValid() ? m.format('h:mm A') : '-';
+  } catch (e) {
+    return '-';
+  }
+};
+
 function NetworkDays() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,9 +117,30 @@ function NetworkDays() {
   const [isViewMode, setIsViewMode] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [updatingTimeId, setUpdatingTimeId] = useState(null);
+  const [columnFilters, setColumnFilters] = useState({
+    dateSent: '',
+    dtsNo: '',
+    direction: '',
+    docType: '',
+    timeReceived: '',
+    dateReleased: '',
+    daysProcessed: '',
+    route: '',
+    processedBy: '',
+    payee: '',
+    seriesNo: '',
+    remarks: '',
+  });
   const adminData = localStorage.getItem('admin');
   const admin = adminData ? JSON.parse(adminData) : null;
   const isIncomingAdmin = admin?.documentdirection === 'incoming';
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedMonth, selectedYear, columnFilters]);
 
   const API_URL = import.meta.env.VITE_API_URL;
   const months = ['All', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -69,19 +149,20 @@ function NetworkDays() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
 
-  const fetchDocuments = useCallback(async () => {
+  const fetchDocuments = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const response = await fetch(`${API_URL}/api/documents`);
       
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const data = await response.json();
       const filteredDocuments = data
-        .filter(doc => 
-          doc.documentdirection === 'outgoing' && 
-          (doc.route === 'Accounting_Unit' || doc.route === 'ORD')
-        )
+        .filter(doc => {
+          if (doc.documentdirection !== 'outgoing') return false;
+          const normalizedRoute = (doc.route || '').replace(/_/g, ' ').toLowerCase();
+          return normalizedRoute === 'accounting unit' || normalizedRoute === 'ord';
+        })
         .map(doc => {
           const businessDays = doc.datereleased && doc.datereleased !== '-' 
             ? calculateNetworkDays(doc.datesent, doc.datereleased)
@@ -98,10 +179,21 @@ function NetworkDays() {
             dateReceive: doc.datereleased || '-',
             deducteddays: doc.deducteddays !== null ? Number(doc.deducteddays) : null,
             calcnetworkdays: Math.max(0, processingDays),
+            daysProcessed: doc.daysprocessed !== null && doc.daysprocessed !== undefined && Number(doc.daysprocessed) > 0
+              ? Number(doc.daysprocessed)
+              : null,
             networkdaysremarks: doc.networkdaysremarks || '-',
             documentType: doc.documenttype,
             route: doc.route,
-            isarchive: doc.isarchive
+            isarchive: doc.isarchive,
+            time: doc.time || '-',
+            seriesNo: doc.seriesno || '-',
+            queueNo: doc.queueno || '-',
+            payee: doc.payee || '-',
+            amount: doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : null,
+            processedBy: doc.processedby || '-',
+            particulars: doc.particulars || '-',
+            documentDirection: doc.documentdirection
           };
         })
         .filter(doc => !doc.isarchive)
@@ -121,10 +213,13 @@ function NetworkDays() {
 
   useEffect(() => {
     const socket = io(API_URL);
-    socket.on('documents_updated', fetchDocuments);
+    const handleUpdate = () => {
+      fetchDocuments(true);
+    };
+    socket.on('documents_updated', handleUpdate);
 
     return () => {
-      socket.off('documents_updated', fetchDocuments);
+      socket.off('documents_updated', handleUpdate);
       socket.disconnect();
     };
   }, [API_URL, fetchDocuments]);
@@ -215,12 +310,69 @@ function NetworkDays() {
       });
     }
   };
+  
+  const handleTimeChange = async (docId, newTime) => {
+    setUpdatingTimeId(docId);
+    try {
+      const response = await fetch(`${API_URL}/api/documents/${docId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time: newTime }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update time');
+      }
+
+      setDocuments((prevDocs) =>
+        prevDocs.map((doc) =>
+          doc.documentid === docId ? { ...doc, time: newTime || '-' } : doc,
+        ),
+      );
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Time Updated',
+        text: 'Time Received has been updated.',
+        timer: 1200,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    } catch (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to Update',
+        text: error.message || 'Failed to update time.',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    } finally {
+      setUpdatingTimeId(null);
+    }
+  };
 
   const filteredDocuments = documents.filter(doc => {
+    const docDate = new Date(doc.dateSent);
     const search = searchTerm.toLowerCase();
-    const matchesDtsNo = doc.dtsNo?.toLowerCase().includes(search);
-    const matchesDocType = doc.documentType?.toLowerCase().includes(search);
-    const matchesStatus = 'outgoing'.includes(search);
+    const docType = doc.documentType?.toLowerCase().replace(/_/g, ' ');
+    const route = doc.route?.toLowerCase().replace(/_/g, ' ');
+    const time = doc.time?.toLowerCase().replace(/_/g, ' ');
+    const direction = doc.documentDirection?.toLowerCase();
+    const processedByVal = doc.processedBy?.toLowerCase();
+    const matchesSearch =
+      (doc.dtsNo?.toLowerCase() || '').includes(search) ||
+      (doc.seriesNo?.toLowerCase() || '').includes(search) ||
+      (doc.queueNo?.toLowerCase() || '').includes(search) ||
+      (doc.particulars?.toLowerCase() || '').includes(search) ||
+      (docType || '').includes(search) ||
+      (route || '').includes(search) ||
+      (time || '').includes(search) ||
+      (direction || '').includes(search) ||
+      (processedByVal || '').includes(search) ||
+      (doc.payee?.toLowerCase() || '').includes(search) ||
+      (doc.amount !== null && doc.amount !== undefined ? String(doc.amount) : '').includes(search);
 
     let matchesMonth = true;
     let matchesYear = true;
@@ -235,11 +387,64 @@ function NetworkDays() {
       }
     }
 
-    return (
-      (!search || matchesDtsNo || matchesDocType || matchesStatus)
-      && matchesMonth && matchesYear
-    );
+    const matchesColumnFilters =
+      (columnFilters.dateSent === '' ||
+        (doc.dateSent
+          ? String(formatDateOnly(doc.dateSent))
+              .toLowerCase()
+              .includes(columnFilters.dateSent.toLowerCase())
+          : false)) &&
+      (columnFilters.dtsNo === '' ||
+        (doc.dtsNo || '')
+          .toLowerCase()
+          .includes(columnFilters.dtsNo.toLowerCase())) &&
+      (columnFilters.seriesNo === '' ||
+        (doc.seriesNo || '')
+          .toLowerCase()
+          .includes(columnFilters.seriesNo.toLowerCase())) &&
+      (columnFilters.direction === '' ||
+        (doc.documentDirection || '')
+          .toLowerCase()
+          .includes(columnFilters.direction.toLowerCase())) &&
+      (columnFilters.docType === '' ||
+        (docType || '').includes(columnFilters.docType.toLowerCase())) &&
+      (columnFilters.timeReceived === '' ||
+        (time || '').includes(columnFilters.timeReceived.toLowerCase())) &&
+      (columnFilters.dateReleased === '' ||
+        (doc.dateReceive
+          ? String(formatDateOnly(doc.dateReceive))
+              .toLowerCase()
+              .includes(columnFilters.dateReleased.toLowerCase())
+          : false) ||
+        (doc.dateReceive === '-' && columnFilters.dateReleased === '-')) &&
+      (columnFilters.daysProcessed === '' ||
+        (doc.daysProcessed !== null && doc.daysProcessed !== undefined
+          ? String(doc.daysProcessed) === columnFilters.daysProcessed
+          : false) ||
+        (doc.daysProcessed === null && columnFilters.daysProcessed === '-')) &&
+      (columnFilters.route === '' ||
+        (route || '').includes(columnFilters.route.toLowerCase())) &&
+      (columnFilters.remarks === '' ||
+        (doc.networkdaysremarks || '')
+          .toLowerCase()
+          .includes(columnFilters.remarks.toLowerCase())) &&
+      (columnFilters.processedBy === '' ||
+        (doc.processedBy || '')
+          .toLowerCase()
+          .includes(columnFilters.processedBy.toLowerCase())) &&
+      (columnFilters.payee === '' ||
+        (doc.payee || '')
+          .toLowerCase()
+          .includes(columnFilters.payee.toLowerCase()));
+
+    return matchesSearch && matchesMonth && matchesYear && matchesColumnFilters;
   });
+
+  // Pagination calculation
+  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentDocuments = filteredDocuments.slice(indexOfFirstItem, indexOfLastItem);
 
   const formatDate = (dateString) => {
     if (!dateString || dateString === '-') return '-';
@@ -252,12 +457,13 @@ function NetworkDays() {
   };
 
   const handleExportToExcel = async () => {
-    const exportDocuments = documents.filter(doc => {
+    const exportDocuments = documents.filter((doc) => {
       const docDate = new Date(doc.dateSent);
       const matchesMonth =
         selectedMonth === 'All' ||
         docDate.toLocaleString('en-US', { month: 'long' }) === selectedMonth;
-      const matchesYear = selectedYear === 'All' || docDate.getFullYear() === selectedYear;
+      const matchesYear =
+        selectedYear === 'All' || docDate.getFullYear() === selectedYear;
       return matchesMonth && matchesYear;
     });
 
@@ -269,8 +475,8 @@ function NetworkDays() {
         timer: 1800,
         showConfirmButton: false,
         customClass: {
-          popup: 'swal2-minimalist'
-        }
+          popup: 'swal2-minimalist',
+        },
       });
       return;
     }
@@ -286,121 +492,181 @@ function NetworkDays() {
       if (selectedYear !== 'All') monthYear.push(selectedYear.toString());
       sheetName = `${monthYear.join(' ')}`;
     }
-    
     if (sheetName.length > 31) {
       sheetName = sheetName.substring(0, 28) + '...';
     }
-    
-    const worksheet = workbook.addWorksheet(sheetName || 'Network Days');
+    const worksheet = workbook.addWorksheet(sheetName || 'Documents');
 
     const headers = [
-      'DATE SENT',
-      'DATE RELEASED',
-      'DTS NO.',
-      'DOCUMENT STATUS',
-      'DOCUMENT TYPE',
-      'PROCESSING DAYS',
-      'REMARKS'
+      'Date Sent',
+      'Date Released',
+      'Days Processed',
+      'Time Received',
+      'DTS No.',
+      'Series No.',
+      'Queue No.',
+      'Document Status',
+      'Document Type',
+      'Payee',
+      'Gross Amount',
+      'Particulars',
+      'Routed To',
+      'Remarks',
     ];
     worksheet.addRow(headers);
 
     const headerRow = worksheet.getRow(1);
-    headerRow.eachCell(cell => {
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13, name: 'Arial' };
+    headerRow.eachCell((cell) => {
+      cell.font = {
+        bold: true,
+        color: { argb: 'FFFFFFFF' },
+        size: 13,
+        name: 'Arial',
+      };
       cell.fill = {
         type: 'pattern',
         pattern: 'solid',
-        fgColor: { argb: '1460A2' }
+        fgColor: { argb: '1460A2' },
       };
       cell.alignment = {
         vertical: 'middle',
         horizontal: 'center',
-        wrapText: true
+        wrapText: true,
       };
       cell.border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
         bottom: { style: 'thin' },
-        right: { style: 'thin' }
+        right: { style: 'thin' },
       };
     });
     headerRow.height = 30;
 
-    exportDocuments.slice().reverse().forEach((doc) => {
-      const rowValues = [
-        formatDate(doc.dateSent),
-        doc.dateReceive,
-        doc.dtsNo,
-        'Outgoing',
-        doc.documentType?.trim() || '-',
-        doc.calcnetworkdays !== null && !isNaN(doc.calcnetworkdays)
-          ? `${doc.calcnetworkdays} days`
-          : '-',
-        doc.networkdaysremarks && doc.networkdaysremarks !== '-'
-          ? doc.networkdaysremarks
-          : '-'
-      ];
-      const row = worksheet.addRow(rowValues);
+    exportDocuments
+      .slice()
+      .reverse()
+      .forEach((doc) => {
+        const daysVal = doc.daysProcessed !== null && doc.daysProcessed !== undefined
+          ? doc.daysProcessed
+          : doc.calcnetworkdays;
 
-      row.eachCell((cell, colNumber) => {
-        cell.font = { name: 'Arial', size: 11 };
-        cell.alignment = {
-          vertical: 'middle',
-          horizontal: colNumber === 7 ? 'left' : 'center',
-          wrapText: true
-        };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'D3D3D3' } },
-          left: { style: 'thin', color: { argb: 'D3D3D3' } },
-          bottom: { style: 'thin', color: { argb: 'D3D3D3' } },
-          right: { style: 'thin', color: { argb: 'D3D3D3' } }
-        };
+        const rowValues = [
+          formatDate(doc.dateSent),
+          doc.dateReceive || '-',
+          daysVal !== null && !isNaN(daysVal) ? Number(daysVal) : '-',
+          doc.time?.replace('_', ' ').toUpperCase() || '-',
+          doc.dtsNo,
+          doc.seriesNo || '-',
+          doc.queueNo || '-',
+          'Outgoing',
+          doc.documentType?.trim() || '-',
+          doc.payee || '-',
+          doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : '-',
+          doc.particulars || '-',
+          doc.route?.replace(/_/g, ' ') || '-',
+          doc.networkdaysremarks && doc.networkdaysremarks !== '-' ? doc.networkdaysremarks : '-',
+        ];
+        const row = worksheet.addRow(rowValues);
 
-        const textWhite = { argb: 'FFFFFFFF' };
-
-        if (colNumber === 3) {
-          cell.font = {
-            name: 'Arial',
-            bold: true,
-            size: 11
-          };
-        }
-
-        if (colNumber === 4) {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '123052' } };
-          cell.font = { name: 'Arial', color: textWhite, bold: true, size: 11 };
-        }
-
-        if (colNumber === 6) {
-          if (doc.calcnetworkdays > 5 || doc.calcnetworkdays <= 0) {
-            cell.font = { name: 'Arial', color: { argb: 'FF0000' }, size: 11 };
-          } else {
-            cell.font = { name: 'Arial', color: { argb: '28A745' }, size: 11 };
+        row.eachCell((cell, colNumber) => {
+          cell.font = { name: 'Arial', size: 11, color: { argb: '000000' } };
+          
+          let horizontalAlign = 'center';
+          if (colNumber === 10 || colNumber === 12 || colNumber === 14) { // Payee, Particulars, and Remarks
+            horizontalAlign = 'left';
+          } else if (colNumber === 11) { // Gross Amount
+            horizontalAlign = 'right';
           }
-        }
+
+          cell.alignment = {
+            vertical: 'middle',
+            horizontal: horizontalAlign,
+            wrapText: true,
+          };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'D3D3D3' } },
+            left: { style: 'thin', color: { argb: 'D3D3D3' } },
+            bottom: { style: 'thin', color: { argb: 'D3D3D3' } },
+            right: { style: 'thin', color: { argb: 'D3D3D3' } },
+          };
+
+          if (colNumber === 5 || colNumber === 6 || colNumber === 7) {
+            cell.font = {
+              name: 'Arial',
+              bold: true,
+              size: 11,
+              color: { argb: '000000' },
+            };
+          }
+
+          if (colNumber === 8) {
+            cell.font = {
+              name: 'Arial',
+              bold: true,
+              size: 11,
+              color: { argb: 'FFFFFFFF' },
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: '123052' },
+            };
+          }
+
+          if (colNumber === 3) {
+            cell.numFmt = '0.0';
+            if (daysVal !== null && !isNaN(daysVal)) {
+              if (daysVal > 5 || daysVal <= 0) {
+                cell.font = { name: 'Arial', color: { argb: 'FF0000' }, size: 11 };
+              } else {
+                cell.font = { name: 'Arial', color: { argb: '28A745' }, size: 11 };
+              }
+            }
+          }
+
+          if (colNumber === 11 && typeof cell.value === 'number') {
+            cell.numFmt = '₱#,##0.00';
+          }
+
+          if (colNumber === 13) {
+            const route = cell.value?.toString() || '';
+            if (route === 'For Compliance') {
+              cell.font = {
+                name: 'Arial',
+                size: 11,
+                color: { argb: 'DC3545' },
+              };
+            } else {
+              cell.font = {
+                name: 'Arial',
+                size: 11,
+                color: { argb: '000000' },
+              };
+            }
+          }
+        });
+
+        row.height = 25;
       });
 
-      row.height = 25;
-    });
-
     const validProcessingDays = exportDocuments
-      .map(doc => doc.calcnetworkdays)
+      .map(doc => doc.daysProcessed !== null && doc.daysProcessed !== undefined ? doc.daysProcessed : doc.calcnetworkdays)
       .filter(days => days !== null && !isNaN(days) && days > 0);
     
     if (validProcessingDays.length > 0) {
       const averageDays = (validProcessingDays.reduce((sum, days) => sum + days, 0) / validProcessingDays.length).toFixed(2);
       
-      const emptyRow = worksheet.addRow(['', '', '', '', '', '', '']);
+      const emptyRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
       emptyRow.height = 20;
       
-      const averageRow = worksheet.addRow(['', '', '', '', '', `Average: ${averageDays} days`, '']);
+      const averageRow = worksheet.addRow(['', '', `Average: ${averageDays}`, '', '', '', '', '', '', '', '', '', '', '']);
       averageRow.height = 25;
       
       averageRow.eachCell((cell, colNumber) => {
         cell.font = { name: 'Arial', size: 11, bold: true };
         cell.alignment = {
           vertical: 'middle',
-          horizontal: colNumber === 6 ? 'center' : 'left',
+          horizontal: colNumber === 3 ? 'center' : 'left',
           wrapText: true
         };
         cell.border = {
@@ -410,7 +676,7 @@ function NetworkDays() {
           right: { style: 'thin', color: { argb: 'D3D3D3' } }
         };
         
-        if (colNumber === 6) {
+        if (colNumber === 3) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0F0F0' } };
           cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: '000000' } };
         }
@@ -421,59 +687,66 @@ function NetworkDays() {
     const dateStr = currentDate.toLocaleDateString('en-US', {
       month: 'long',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
     });
     const timeStr = currentDate.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
     });
-    
+
     for (let i = 0; i < 3; i++) {
-      const spacingRow = worksheet.addRow(['', '', '', '', '', '', '']);
+      const spacingRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
       spacingRow.height = 15;
     }
-    
-    const noteRow = worksheet.addRow(['', '', '', '', '', '', '']);
+
+    const noteRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
     noteRow.height = 20;
-    
-    worksheet.mergeCells(`A${noteRow.number}:G${noteRow.number}`);
-    
+
+    worksheet.mergeCells(`A${noteRow.number}:N${noteRow.number}`);
+
     const noteCell = worksheet.getCell(`A${noteRow.number}`);
     noteCell.value = `Note: This is a system-generated file. Generated on: ${dateStr} ${timeStr}`;
-    noteCell.font = { 
-      name: 'Arial', 
-      size: 11, 
-      bold: true, 
+    noteCell.font = {
+      name: 'Arial',
+      size: 11,
+      bold: true,
       italic: true,
-      color: { argb: '000000' }
+      color: { argb: '000000' },
     };
     noteCell.alignment = {
       vertical: 'middle',
       horizontal: 'center',
-      wrapText: true
+      wrapText: true,
     };
     noteCell.border = {
       top: { style: 'thin', color: { argb: 'D3D3D3' } },
       left: { style: 'thin', color: { argb: 'D3D3D3' } },
       bottom: { style: 'thin', color: { argb: 'D3D3D3' } },
-      right: { style: 'thin', color: { argb: 'D3D3D3' } }
+      right: { style: 'thin', color: { argb: 'D3D3D3' } },
     };
 
     worksheet.columns = [
-      { width: 33 },
-      { width: 33 },
-      { width: 28 },
-      { width: 30 },
-      { width: 35 },
-      { width: 30 },
-      { width: 40 }
+      { width: 33 }, // Date Sent
+      { width: 33 }, // Date Released
+      { width: 20 }, // Days Processed
+      { width: 25 }, // Time Received
+      { width: 28 }, // DTS No.
+      { width: 25 }, // Series No.
+      { width: 25 }, // Queue No.
+      { width: 30 }, // Document Status
+      { width: 35 }, // Document Type
+      { width: 30 }, // Payee
+      { width: 20 }, // Gross Amount
+      { width: 40 }, // Particulars
+      { width: 30 }, // Routed To
+      { width: 40 }, // Remarks
     ];
 
     worksheet.views = [{ state: 'frozen', ySplit: 1 }];
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `Processing_Days_${selectedMonth !== 'All' ? selectedMonth : ''}_${selectedYear !== 'All' ? selectedYear : ''}.xlsx`;
+    const fileName = `Processed_Documents_${selectedMonth !== 'All' ? selectedMonth : ''}_${selectedYear !== 'All' ? selectedYear : ''}.xlsx`;
     saveAs(new Blob([buffer]), fileName);
   };
 
@@ -510,13 +783,26 @@ function NetworkDays() {
     )
   );
 
+  const validShowedProcessingDays = filteredDocuments
+    .map(doc => doc.daysProcessed !== null && doc.daysProcessed !== undefined ? doc.daysProcessed : doc.calcnetworkdays)
+    .filter(days => days !== null && !isNaN(days) && days > 0);
+  const showedAverageDays = validShowedProcessingDays.length > 0
+    ? (validShowedProcessingDays.reduce((sum, days) => sum + days, 0) / validShowedProcessingDays.length).toFixed(2)
+    : '0.00';
+
   return (
-    <div className="p-2 space-y-6">
+    <div className="space-y-6">
       {/* Header Panel with Controls */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Processing Days</h1>
-          <p className="text-xs text-slate-400 mt-0.5 font-medium font-sans">Track business turnaround times, calculate network days, and manage exceptions</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Processed Documents</h1>
+            <p className="text-xs text-slate-400 mt-0.5 font-medium font-sans">Track business turnaround times, calculate network days, and manage exceptions</p>
+          </div>
+          <div className="bg-sky-50 border border-sky-100 rounded-xl px-4 py-2 flex flex-col justify-center items-center shadow-3xs">
+            <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">Average Turnaround</span>
+            <span className="text-sm font-extrabold text-sky-800 mt-0.5">{showedAverageDays} Days</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -586,26 +872,30 @@ function NetworkDays() {
 
       {/* Processing Days Table Container */}
       <div className="table-container-premium shadow-2xs">
-        <div className="overflow-x-auto">
-          <table className="table-premium w-full text-left border-collapse">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin">
+          <table className="table-premium w-full text-left border-collapse relative">
             <thead>
               <tr>
-                <th className="w-[15%] text-center">
+                <th className="w-[12%] text-center">
                   {admin?.documentdirection === 'incoming' ? 'Date Sent' : 'Date Received'}
                 </th>
-                <th className="w-[15%] text-center">Date Released</th>
-                <th className="w-[12%] text-center">DTS No.</th>
-                <th className="w-[12%] text-center">Direction</th>
-                <th className="w-[18%]">Document Type</th>
+                <th className="w-[10%] text-center">DTS No.</th>
+                <th className="w-[10%] text-center">Series No.</th>
+                <th className="w-[10%] text-center">Queue No.</th>
+                <th className="w-[9%] text-center">Direction</th>
+                <th className="w-[12%]">Payee</th>
+                <th className="w-[15%]">Document Type</th>
+                <th className="w-[12%] text-center">Date Released</th>
                 <th className="w-[12%] text-center font-bold">Processing Days</th>
-                <th className="w-[16%]">Remarks</th>
+                <th className="w-[12%]">Routed To</th>
+                <th className="w-[12%]">Processed By</th>
                 <th className="w-[10%] text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-10 text-slate-400 font-semibold">
+                  <td colSpan="12" className="text-center py-10 text-slate-400 font-semibold">
                     <div className="flex items-center justify-center gap-2">
                       <svg className="animate-spin h-5 w-5 text-sky-700" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -615,42 +905,82 @@ function NetworkDays() {
                     </div>
                   </td>
                 </tr>
-              ) : filteredDocuments.length > 0 ? (
-                filteredDocuments.map((doc) => {
-                  const isLongDuration = doc.calcnetworkdays > 5 || doc.calcnetworkdays <= 0;
+              ) : currentDocuments.length > 0 ? (
+                currentDocuments.map((doc) => {
+                  const direction = doc.documentDirection?.toLowerCase() || 'outgoing';
+                  let directionBadgeClass = 'bg-slate-50 text-slate-600 border-slate-200';
+                  if (direction === 'incoming') {
+                    directionBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200/50';
+                  } else if (direction === 'outgoing') {
+                    directionBadgeClass = 'bg-blue-50 text-blue-700 border-blue-200/50';
+                  }
 
                   return (
                     <tr key={doc.documentid}>
-                      <td className="text-center font-medium text-slate-500 text-xs">
-                        {formatDate(doc.dateSent)}
-                      </td>
-                      <td className="text-center font-medium text-slate-500 text-xs">
-                        {doc.dateReceive}
+                      <td className="text-left text-xs">
+                        {doc.dateSent !== '-' ? (
+                          <div className="flex flex-col items-start">
+                            <span className="font-bold text-slate-800">{formatDateOnly(doc.dateSent)}</span>
+                            <span className="text-[10px] text-slate-400 font-semibold mt-0.5">{formatTimeOnly(doc.dateSent)}</span>
+                          </div>
+                        ) : '-'}
                       </td>
                       <td className="text-center font-extrabold text-slate-800 text-xs">
                         {doc.dtsNo}
                       </td>
+                      <td className="text-center font-bold text-slate-700 text-xs">
+                        {doc.seriesNo || '-'}
+                      </td>
+                      <td className="text-center font-bold text-slate-700 text-xs">
+                        {doc.queueNo || '-'}
+                      </td>
                       <td className="text-center">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border bg-pink-50 text-pink-700 border-pink-200/50">
-                          Outgoing
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${directionBadgeClass}`}>
+                          {doc.documentDirection}
                         </span>
+                      </td>
+                      <td className="text-left text-xs">
+                        {direction === 'incoming' ? (
+                          <span className="font-semibold text-slate-400">-</span>
+                        ) : (
+                          <div className="flex flex-col items-start">
+                            <span className="font-bold text-slate-800 max-w-[120px] truncate" title={doc.payee}>
+                              {doc.payee || '-'}
+                            </span>
+                            {doc.amount !== null && doc.amount !== undefined ? (
+                              <span className="text-[10px] text-[#0b4c95] font-bold mt-0.5">
+                                {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(doc.amount)}
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                       </td>
                       <td className="font-semibold text-slate-700 text-xs max-w-[150px] truncate" title={doc.documentType}>
                         {doc.documentType}
                       </td>
-                      <td className="text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase border ${
-                          isLongDuration 
-                            ? 'bg-rose-50 text-rose-700 border-rose-200/50' 
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200/50'
-                        }`}>
-                          {doc.calcnetworkdays !== null && !isNaN(doc.calcnetworkdays)
-                            ? `${doc.calcnetworkdays} days`
-                            : '-'}
-                        </span>
+                      <td className="text-left text-xs">
+                        {doc.dateReceive !== '-' ? (
+                          <div className="flex flex-col items-start">
+                            <span className="font-bold text-slate-800">{formatDateOnly(doc.dateReceive)}</span>
+                            <span className="text-[10px] text-slate-400 font-semibold mt-0.5">{formatTimeOnly(doc.dateReceive)}</span>
+                          </div>
+                        ) : '-'}
                       </td>
-                      <td className="text-slate-500 font-medium text-xs max-w-[150px] truncate" title={doc.networkdaysremarks}>
-                        {doc.networkdaysremarks !== '-' ? doc.networkdaysremarks : '-'}
+                      <td className="text-center font-semibold text-slate-600 text-xs">
+                        {(() => {
+                          const display = doc.daysProcessed !== null && doc.daysProcessed !== undefined
+                            ? doc.daysProcessed
+                            : (doc.calcnetworkdays !== null ? doc.calcnetworkdays : null);
+                          return display !== null && !isNaN(display)
+                            ? Number(display).toFixed(1)
+                            : '-';
+                        })()}
+                      </td>
+                      <td className="font-semibold text-slate-700 text-xs max-w-[120px] truncate" title={doc.route?.replace(/_/g, ' ')}>
+                        {doc.route?.replace(/_/g, ' ') || '-'}
+                      </td>
+                      <td className="font-semibold text-slate-700 text-xs max-w-[120px] truncate" title={doc.processedBy}>
+                        {doc.processedBy || '-'}
                       </td>
                       <td>
                         <div className="flex items-center justify-center gap-1.5">
@@ -685,7 +1015,7 @@ function NetworkDays() {
                 })
               ) : (
                 <tr>
-                  <td colSpan="8" className="text-center py-16 text-slate-400">
+                  <td colSpan="12" className="text-center py-16 text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FiSearch className="w-8 h-8 opacity-30" />
                       <p className="text-sm font-semibold">No records found</p>
@@ -697,6 +1027,147 @@ function NetworkDays() {
           </table>
         </div>
       </div>
+
+      {/* Premium Pagination Controls */}
+      {filteredDocuments.length > 0 && (
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-5 px-6 py-4 bg-white border border-slate-200 rounded-2xl shadow-2xs">
+          <div className="text-xs font-semibold text-slate-500">
+            Showing <span className="text-slate-800">{filteredDocuments.length === 0 ? 0 : indexOfFirstItem + 1}</span> to{' '}
+            <span className="text-slate-800">
+              {Math.min(indexOfLastItem, filteredDocuments.length)}
+            </span>{' '}
+            of <span className="text-slate-800">{filteredDocuments.length}</span> entries
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Rows Per Page Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500">Show</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="h-8 w-16 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 px-2 outline-none focus:border-[#0b4c95] focus:ring-2 focus:ring-sky-500/10 cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-xs font-semibold text-slate-500">entries</span>
+            </div>
+
+            {/* Page Buttons */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className={`p-2 rounded-lg border border-slate-200 text-slate-600 transition-colors flex items-center justify-center ${
+                    currentPage === 1
+                      ? 'opacity-40 cursor-not-allowed bg-slate-50'
+                      : 'hover:bg-slate-50 hover:text-slate-800 cursor-pointer'
+                  }`}
+                  title="Previous Page"
+                >
+                  <FiChevronLeft className="w-4 h-4" />
+                </button>
+
+                {(() => {
+                  const pages = [];
+                  const maxVisiblePages = 5;
+                  let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                  let endPage = startPage + maxVisiblePages - 1;
+
+                  if (endPage > totalPages) {
+                    endPage = totalPages;
+                    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                  }
+
+                  if (startPage > 1) {
+                    pages.push(
+                      <button
+                        key={1}
+                        onClick={() => setCurrentPage(1)}
+                        className={`h-8 w-8 rounded-lg text-xs font-bold transition-all duration-200 ${
+                          currentPage === 1
+                            ? 'bg-[#0b4c95] text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-50 cursor-pointer'
+                        }`}
+                      >
+                        1
+                      </button>
+                    );
+                    if (startPage > 2) {
+                      pages.push(
+                        <span key="dots-start" className="px-1 text-slate-400 text-xs font-bold">
+                          ...
+                        </span>
+                      );
+                    }
+                  }
+
+                  for (let i = startPage; i <= endPage; i++) {
+                    pages.push(
+                      <button
+                        key={i}
+                        onClick={() => setCurrentPage(i)}
+                        className={`h-8 w-8 rounded-lg text-xs font-bold transition-all duration-200 ${
+                          currentPage === i
+                            ? 'bg-[#0b4c95] text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-50 cursor-pointer'
+                        }`}
+                      >
+                        {i}
+                      </button>
+                    );
+                  }
+
+                  if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                      pages.push(
+                        <span key="dots-end" className="px-1 text-slate-400 text-xs font-bold">
+                          ...
+                        </span>
+                      );
+                    }
+                    pages.push(
+                      <button
+                        key={totalPages}
+                        onClick={() => setCurrentPage(totalPages)}
+                        className={`h-8 w-8 rounded-lg text-xs font-bold transition-all duration-200 ${
+                          currentPage === totalPages
+                            ? 'bg-[#0b4c95] text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-50 cursor-pointer'
+                        }`}
+                      >
+                        {totalPages}
+                      </button>
+                    );
+                  }
+
+                  return pages;
+                })()}
+
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className={`p-2 rounded-lg border border-slate-200 text-slate-600 transition-colors flex items-center justify-center ${
+                    currentPage === totalPages
+                      ? 'opacity-40 cursor-not-allowed bg-slate-50'
+                      : 'hover:bg-slate-50 hover:text-slate-800 cursor-pointer'
+                  }`}
+                  title="Next Page"
+                >
+                  <FiChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showNetworkModal && (
         <OverlayProcessingDays 

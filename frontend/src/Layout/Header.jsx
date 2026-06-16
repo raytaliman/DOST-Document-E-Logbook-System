@@ -30,7 +30,7 @@ function Header() {
 
           {/* Title */}
           <h1 className="text-lg font-extrabold tracking-tight text-slate-800 font-sans">
-            Budget Document Tracking System
+            Budget Document Logging System
           </h1>
         </div>
 
