@@ -13,6 +13,13 @@ function Login() {
   const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
+    const adminData = localStorage.getItem('admin');
+    if (adminData) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate]);
+
+  useEffect(() => {
     // Entrance animation
     if (formRef.current) {
       formRef.current.style.opacity = 0;
@@ -129,7 +136,7 @@ function Login() {
                 DOST E-LOGBOOK
               </h1>
               <p className="text-sky-200/80 text-[10px] uppercase font-bold tracking-widest">
-                Incoming & Outgoing Tracker
+                Budget Document Logging System
               </p>
             </div>
           </div>
@@ -225,6 +232,9 @@ function Login() {
                 )}
               </button>
             </div>
+            <p className="text-[10px] text-center text-slate-400 font-semibold mt-4 leading-relaxed">
+              Developed by DOST Ilocos Region - ITSM Unit<br />v2.0
+            </p>
           </div>
         </div>
       </div>

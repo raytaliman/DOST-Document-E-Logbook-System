@@ -1,8 +1,18 @@
 import Header from './Header.jsx';
 import Sidebar from './Sidebar.jsx';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 function Layout() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const adminData = localStorage.getItem('admin');
+    if (!adminData) {
+      navigate('/', { replace: true });
+    }
+  }, [navigate]);
+
   return (
     <div className="h-screen flex flex-col bg-transparent">
       <Header />

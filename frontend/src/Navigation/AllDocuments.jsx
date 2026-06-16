@@ -855,6 +855,7 @@ function AllDocs() {
 
         <div className="flex gap-2">
           {(adminDirection === 'incoming' ||
+            adminDirection === 'all' ||
             !adminDirection ||
             isUserAuthorized) && (
             <button
@@ -865,7 +866,10 @@ function AllDocs() {
               <span>Add Incoming</span>
             </button>
           )}
-          {(adminDirection === 'outgoing' || !adminDirection) && (
+          {(adminDirection === 'outgoing' ||
+            adminDirection === 'all' ||
+            !adminDirection ||
+            isUserAuthorized) && (
             <button
               onClick={() => setShowOutgoingModal(true)}
               className="h-10 px-4 btn-dost-blue font-bold text-xs rounded-xl shadow-md shadow-sky-900/10 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex items-center gap-1.5"
