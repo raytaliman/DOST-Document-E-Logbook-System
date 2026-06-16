@@ -35,5 +35,5 @@ USER appuser
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-EXPOSE 4173
+EXPOSE 3601
 CMD ["serve", "-s", "dist", "-l", "4173"]
