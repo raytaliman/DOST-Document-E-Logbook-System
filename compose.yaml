@@ -7,7 +7,7 @@ services:
     init: true
     env_file: ./backend/.env
     ports:
-      - "3000:3000"
+      - "3600:3600"
     networks:
       - dostnet
 
@@ -19,7 +19,7 @@ services:
     init: true
     env_file: ./frontend/.env  
     ports:
-      - "4173:4173"
+      - "3601:3601"
     networks:
       - dostnet
     depends_on:
