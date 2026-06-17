@@ -208,17 +208,69 @@ function AllDocs() {
     );
   }, [adminUserType, adminDirection]);
 
-  useEffect(() => {
-    console.log('Permission Check:', {
-      adminDataFromLocalStorage: adminData, // Raw data from localStorage
-      parsedAdminObject: admin, // Parsed admin object
-      derivedAdminUserType: adminUserType, // Normalized user type
-      derivedAdminDirection: adminDirection, // Normalized document direction
-      finalIsUserAuthorized: isUserAuthorized, // Final authorization status
-    });
-  }, [admin, adminUserType, adminDirection, isUserAuthorized]);
+
   const [updatingTimeId, setUpdatingTimeId] = useState(null);
+  const [updatingDateReleasedId, setUpdatingDateReleasedId] = useState(null);
   const [archivingId, setArchivingId] = useState(null);
+
+  const handleDateReleasedChange = async (docId, rawValue) => {
+    if (!rawValue) return;
+    setUpdatingDateReleasedId(docId);
+    try {
+      const dateObj = new Date(rawValue);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthName = months[dateObj.getMonth()];
+      let hours = dateObj.getHours();
+      const minutes = dateObj.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const displayHours = hours.toString().padStart(2, '0');
+      const displayMinutes = minutes.toString().padStart(2, '0');
+      
+      const formattedDateReleased = `${monthName} ${dateObj.getDate()}, ${dateObj.getFullYear()} at ${displayHours}:${displayMinutes} ${ampm}`;
+      
+      const response = await fetch(`${API_URL}/api/documents/${docId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          datereleased: formattedDateReleased,
+          processedby: admin?.adminname || null
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update Date Released');
+      }
+
+      setDocuments((prevDocs) =>
+        prevDocs.map((doc) =>
+          doc.id === docId ? { ...doc, dateReceive: formattedDateReleased } : doc,
+        ),
+      );
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Date Released Updated',
+        text: 'The document has been marked as released.',
+        timer: 1200,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    } catch (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to Update',
+        text: error.message || 'Failed to update Date Released.',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    } finally {
+      setUpdatingDateReleasedId(null);
+    }
+  };
 
   // Fetch documents
   const fetchDocuments = useCallback(async (isSilent = false) => {
@@ -1451,6 +1503,13 @@ function AllDocs() {
                         adminUserType === 'superadmin'
                       );
 
+                    const isDateReleasedEditable =
+                      !doc.archiveStatus &&
+                      (doc.dateReceive === '-' || !doc.dateReceive) &&
+                      (adminDirection === 'all' ||
+                        adminDirection === 'outgoing' ||
+                        adminUserType === 'superadmin');
+
                     return (
                       <tr key={doc.id}>
                         <td className="text-left text-xs">
@@ -1542,10 +1601,40 @@ function AllDocs() {
                           </div>
                         </td>
                         <td className="text-left text-xs">
-                          {doc.dateReceive !== '-' ? (
+                          {doc.dateReceive !== '-' && doc.dateReceive ? (
                             <div className="flex flex-col items-start">
                               <span className="font-bold text-slate-800">{formatDateOnly(doc.dateReceive)}</span>
                               <span className="text-[10px] text-slate-400 font-semibold mt-0.5">{formatTimeOnly(doc.dateReceive)}</span>
+                            </div>
+                          ) : isDateReleasedEditable ? (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="datetime-local"
+                                onChange={(e) => handleDateReleasedChange(doc.id, e.target.value)}
+                                disabled={updatingDateReleasedId === doc.id}
+                                className="h-8 w-[140px] bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 px-1.5 outline-none transition-all duration-200 focus:border-[#0b4c95] focus:ring-2 focus:ring-sky-500/10 cursor-pointer hover:border-slate-300"
+                              />
+                              {updatingDateReleasedId === doc.id && (
+                                <svg
+                                  className="animate-spin h-3.5 w-3.5 text-sky-700"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  ></circle>
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8v8z"
+                                  ></path>
+                                </svg>
+                              )}
                             </div>
                           ) : '-'}
                         </td>

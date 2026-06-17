@@ -53,10 +53,10 @@ module.exports = (app, io) => {
   app.post('/api/documents', async (req, res) => {
     const { dtsno, documenttype, route, remarks, datesent, datereleased, processedby, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
     
-    if (!dtsno || !documenttype || !route) {
+    if (!dtsno || !route) {
       return res.status(400).json({ 
         error: 'Missing required fields', 
-        required: ['dtsno', 'documenttype', 'route'] 
+        required: ['dtsno', 'route'] 
       });
     }
   
@@ -82,7 +82,7 @@ module.exports = (app, io) => {
             RETURNING *`,
           [
             dtsno.trim().toUpperCase(),
-            documenttype.trim(),
+            documenttype?.trim() || null,
             route.trim(),
             remarks?.trim() || null,
             'outgoing',
@@ -140,7 +140,6 @@ module.exports = (app, io) => {
   // Update document
   app.put('/api/documents/:id', async (req, res) => {
     const { id } = req.params;
-    console.log('PUT /api/documents/:id body:', req.body);
     const { dtsno, documenttype, route, remarks, time, datereleased, datesent, processedby, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
     
     try {
@@ -152,7 +151,8 @@ module.exports = (app, io) => {
               await client.query('BEGIN');
               const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
               const oldDoc = oldRes.rows[0];
-              const directionValue = timeValue ? 'outgoing' : 'incoming';
+              const routeValue = oldDoc.route;
+              const directionValue = ((timeValue && timeValue !== '-') || (routeValue && routeValue !== '-')) ? 'outgoing' : 'incoming';
               const result = await client.query(
                 'UPDATE tbldocuments SET time = $1, documentdirection = $2 WHERE documentid = $3 RETURNING *',
                 [timeValue, directionValue, parseInt(id)]
@@ -181,12 +181,14 @@ module.exports = (app, io) => {
               await client.query('BEGIN');
               const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
               const oldDoc = oldRes.rows[0];
+              const timeValue = oldDoc.time;
+              const directionValue = ((timeValue && timeValue !== '-') || (routeValue && routeValue !== '-')) ? 'outgoing' : 'incoming';
               const result = await client.query(
-                'UPDATE tbldocuments SET route = $1 WHERE documentid = $2 RETURNING *',
-                [routeValue, parseInt(id)]
+                'UPDATE tbldocuments SET route = $1, documentdirection = $2 WHERE documentid = $3 RETURNING *',
+                [routeValue, directionValue, parseInt(id)]
               );
               const newDoc = result.rows[0];
-              const changes = diffFields(oldDoc, newDoc, ['route']);
+              const changes = diffFields(oldDoc, newDoc, ['route', 'documentdirection']);
               if (changes) {
                 await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
               }
@@ -201,10 +203,37 @@ module.exports = (app, io) => {
             }
         }
 
-        if (!dtsno || !documenttype || !route) {
+        // DateReleased quick edit
+        if (typeof datereleased !== 'undefined' && !dtsno && !route) {
+            const client = await pool.connect();
+            try {
+              await client.query('BEGIN');
+              const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+              const oldDoc = oldRes.rows[0];
+              const result = await client.query(
+                'UPDATE tbldocuments SET datereleased = $1 WHERE documentid = $2 RETURNING *',
+                [datereleased, parseInt(id)]
+              );
+              const newDoc = result.rows[0];
+              const changes = diffFields(oldDoc, newDoc, ['datereleased']);
+              if (changes) {
+                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
+              }
+              await client.query('COMMIT');
+              io.emit('documents_updated');
+              return res.json(newDoc);
+            } catch (err) {
+              await client.query('ROLLBACK');
+              throw err;
+            } finally {
+              client.release();
+            }
+        }
+
+        if (!dtsno || !route) {
             return res.status(400).json({ 
                 error: 'Missing required fields', 
-                required: ['dtsno', 'documenttype', 'route'] 
+                required: ['dtsno', 'route'] 
             });
         }
 
@@ -237,18 +266,19 @@ module.exports = (app, io) => {
           if (typeof datereleased !== 'undefined') {
               query = `
                   UPDATE tbldocuments 
-                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
-                      time = CASE WHEN $5::boolean THEN $6 ELSE time END,
+                  SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
+                      time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datereleased = $7, datesent = COALESCE($8, datesent),
                       processedby = COALESCE($9, processedby),
                       payee = $10, amount = $11, seriesno = $12, particulars = $13, queueno = $14,
-                      include_friday = $15
+                      include_friday = $15,
+                      documentdirection = CASE WHEN (CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END IS NOT NULL) OR ($3::text IS NOT NULL AND $3::text <> '' AND $3::text <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
                   WHERE documentid = $16 
                   RETURNING *
               `;
               params = [
                   dtsno.trim().toUpperCase(),
-                  documenttype.trim(),
+                  documenttype?.trim() || null,
                   route.trim(),
                   remarksValue,
                   timeProvided,
@@ -267,18 +297,19 @@ module.exports = (app, io) => {
           } else {
               query = `
                   UPDATE tbldocuments 
-                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
-                      time = CASE WHEN $5::boolean THEN $6 ELSE time END,
+                  SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
+                      time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datesent = COALESCE($7, datesent),
                       processedby = COALESCE($8, processedby),
                       payee = $9, amount = $10, seriesno = $11, particulars = $12, queueno = $13,
-                      include_friday = $14
+                      include_friday = $14,
+                      documentdirection = CASE WHEN (CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END IS NOT NULL) OR ($3::text IS NOT NULL AND $3::text <> '' AND $3::text <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
                   WHERE documentid = $15 
                   RETURNING *
               `;
               params = [
                   dtsno.trim().toUpperCase(),
-                  documenttype.trim(),
+                  documenttype?.trim() || null,
                   route.trim(),
                   remarksValue,
                   timeProvided,
@@ -299,7 +330,7 @@ module.exports = (app, io) => {
           const updatedDoc = result.rows[0];
 
           // Log only changed fields
-          const trackedFields = ['dtsno','documenttype','route','remarks','time','datereleased','datesent','processedby','payee','amount','seriesno','particulars','queueno', 'include_friday'];
+          const trackedFields = ['dtsno','documenttype','route','remarks','time','datereleased','datesent','processedby','payee','amount','seriesno','particulars','queueno', 'include_friday', 'documentdirection'];
           const changes = diffFields(oldDoc, updatedDoc, trackedFields);
           if (changes) {
             await logAudit(client, {

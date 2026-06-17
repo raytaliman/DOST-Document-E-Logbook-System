@@ -17,8 +17,8 @@ module.exports = (app, io) => {
   // Add new incoming document
   app.post('/api/incoming', async (req, res) => {
     const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
-    if (!dtsno || !documenttype) {
-      return res.status(400).json({ error: 'Required fields missing', required: ['dtsno', 'documenttype'] });
+    if (!dtsno) {
+      return res.status(400).json({ error: 'Required fields missing', required: ['dtsno'] });
     }
     try {
       const formattedDtsNo = dtsno.trim().toUpperCase();
@@ -30,7 +30,7 @@ module.exports = (app, io) => {
          RETURNING *`,
         [
           formattedDtsNo,
-          documenttype.trim(),
+          documenttype?.trim() || null,
           'incoming',
           manilaTime,
           null,
@@ -61,8 +61,8 @@ module.exports = (app, io) => {
   app.put('/api/incoming/:id', async (req, res) => {
     const { id } = req.params;
     const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
-    if (!dtsno || !documenttype) {
-      return res.status(400).json({ error: 'Required fields missing', required: ['dtsno', 'documenttype'] });
+    if (!dtsno) {
+      return res.status(400).json({ error: 'Required fields missing', required: ['dtsno'] });
     }
     try {
       const formattedDtsNo = dtsno.trim().toUpperCase();
@@ -75,12 +75,12 @@ module.exports = (app, io) => {
          SET dtsno = $1, documenttype = $2, processedby = COALESCE($3, processedby),
              payee = $4, amount = $5, seriesno = $6, particulars = $7, queueno = $8,
              time = $9, route = $10,
-             documentdirection = CASE WHEN $9 IS NOT NULL AND $9 <> '' AND $9 <> '-' THEN 'outgoing' ELSE 'incoming' END
+             documentdirection = CASE WHEN ($9 IS NOT NULL AND $9 <> '' AND $9 <> '-') OR ($10 IS NOT NULL AND $10 <> '' AND $10 <> '-') THEN 'outgoing' ELSE 'incoming' END
          WHERE documentid = $11 
          RETURNING *`,
         [
           formattedDtsNo, 
-          documenttype.trim(), 
+          documenttype?.trim() || null, 
           processedby?.trim() || null, 
           payee?.trim() || null, 
           amount ? parseFloat(amount) : null, 

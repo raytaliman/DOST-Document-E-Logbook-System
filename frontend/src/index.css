@@ -143,16 +143,16 @@ body {
   color: #475569;
   font-weight: 700;
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   letter-spacing: 0.05em;
-  padding: 1rem 1.25rem;
+  padding: 0.625rem 1rem;
   border-bottom: 2px solid #edf2f7;
   box-shadow: inset 0 -1px 0 #edf2f7;
 }
 
 .table-premium td {
-  padding: 1rem 1.25rem;
-  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
   color: #334155;
   border-bottom: 1px solid #edf2f7;
   transition: background-color 0.2s ease;

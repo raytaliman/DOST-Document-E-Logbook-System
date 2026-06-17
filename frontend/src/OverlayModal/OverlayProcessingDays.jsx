@@ -2,6 +2,103 @@ import { useEffect, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import '../index.css';
 
+function parseDateReleased(dateStr) {
+  if (!dateStr || dateStr === '-') return null;
+  const [datePart, timePart] = dateStr.split(' at ');
+  if (!timePart) return new Date(dateStr);
+  const date = new Date(`${datePart} ${timePart}`);
+  if (!isNaN(date.getTime())) return date;
+  const dateOnly = new Date(datePart);
+  return isNaN(dateOnly.getTime()) ? null : dateOnly;
+}
+
+function formatDateLabel(dateStr) {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+
+function getRawWeekdays(startDate, endDate) {
+  if (!startDate || !endDate || endDate === '-') return 0;
+  try {
+    const start = parseDateReleased(startDate) || new Date(startDate);
+    const end = parseDateReleased(endDate) || new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0;
+    
+    let count = 0;
+    const current = new Date(start);
+    while (current <= end) {
+      const day = current.getDay();
+      if (day !== 0 && day !== 6) {
+        count++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+function getDeductionBreakdown(startDate, endDate, holidaysList = [], includeFriday = true) {
+  if (!startDate || !endDate || endDate === '-') {
+    return { weekends: 0, holidays: [], fridays: [], total: 0 };
+  }
+  
+  try {
+    const start = parseDateReleased(startDate) || new Date(startDate);
+    const end = parseDateReleased(endDate) || new Date(endDate);
+    
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+      return { weekends: 0, holidays: [], fridays: [], total: 0 };
+    }
+    
+    let weekendsCount = 0;
+    const fridaysApplied = [];
+    const holidaysApplied = [];
+    
+    const current = new Date(start);
+    const holidaySet = new Set(holidaysList.map(h => typeof h === 'string' ? h : h.holidaydate));
+    
+    while (current <= end) {
+      const day = current.getDay();
+      const dateStr = current.getFullYear() + '-' + 
+                      String(current.getMonth() + 1).padStart(2, '0') + '-' + 
+                      String(current.getDate()).padStart(2, '0');
+      
+      if (day === 0 || day === 6) {
+        weekendsCount++;
+      } else if (day === 5 && !includeFriday) {
+        fridaysApplied.push(dateStr);
+      } else {
+        const holidayMatch = holidaysList.find(h => (typeof h === 'string' ? h : h.holidaydate) === dateStr);
+        if (holidayMatch) {
+          holidaysApplied.push({
+            date: dateStr,
+            name: typeof holidayMatch === 'string' ? 'Holiday' : holidayMatch.holidayname
+          });
+        }
+      }
+      
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return {
+      weekends: weekendsCount,
+      fridays: fridaysApplied,
+      holidays: holidaysApplied,
+      total: weekendsCount + fridaysApplied.length + holidaysApplied.length
+    };
+  } catch (error) {
+    console.error('Error calculating breakdown:', error);
+    return { weekends: 0, holidays: [], fridays: [], total: 0 };
+  }
+}
+
 function OverlayProcessingDays({
   isOpen,
   onClose,
@@ -9,6 +106,7 @@ function OverlayProcessingDays({
   viewMode,
   editMode,
   calculateNetworkDays,
+  holidaysList = [],
 }) {
   const popupRef = useRef(null);
   const [formData, setFormData] = useState({ deducteddays: '0', remarks: '' });
@@ -19,6 +117,27 @@ function OverlayProcessingDays({
     calculation: '',
   });
   const API_URL = import.meta.env.VITE_API_URL;
+
+  const breakdown = getDeductionBreakdown(
+    editingDoc?.dateSent,
+    editingDoc?.dateReceive,
+    holidaysList,
+    editingDoc?.include_friday !== false
+  );
+
+  const rawWeekdays = getRawWeekdays(editingDoc?.dateSent, editingDoc?.dateReceive);
+  const systemDeductions = (breakdown.fridays?.length || 0) + (breakdown.holidays?.length || 0);
+  const deductedPreview = parseInt(formData.deducteddays, 10) || 0;
+
+  const baseProcessed = editingDoc?.daysProcessed !== null && editingDoc?.daysProcessed !== undefined
+    ? Number(editingDoc.daysProcessed) + (Number(editingDoc.deducteddays) || 0)
+    : Math.max(0, rawWeekdays - systemDeductions);
+
+  const netDays = Math.max(0, baseProcessed - deductedPreview);
+  const totalDeducted = Math.max(0, rawWeekdays - netDays);
+  const isExceeding = netDays <= 0 && deductedPreview > 0;
+  
+  const hourlyAdjustment = Math.max(0, (rawWeekdays - systemDeductions) - baseProcessed);
 
   useEffect(() => {
     if (editingDoc) {
@@ -51,13 +170,10 @@ function OverlayProcessingDays({
     } else if (deductedDays < 0) {
       newErrors.deducteddays = 'Cannot be negative';
       isValid = false;
-    } else if (editingDoc && typeof editingDoc.calcnetworkdays === 'number') {
-      const processingDays = editingDoc.calcnetworkdays - deductedDays;
-      if (processingDays < 0) {
+    } else {
+      const calculatedNetDays = baseProcessed - deductedDays;
+      if (calculatedNetDays < 0) {
         newErrors.deducteddays = 'Processing days cannot be negative.';
-        isValid = false;
-      } else if (processingDays === 0) {
-        newErrors.deducteddays = 'Processing days cannot be zero.';
         isValid = false;
       }
     }
@@ -75,10 +191,7 @@ function OverlayProcessingDays({
     try {
       setIsSubmitting(true);
       const deductedDays = parseInt(formData.deducteddays, 10);
-      const businessDays =
-        typeof editingDoc.calcnetworkdays === 'number'
-          ? editingDoc.calcnetworkdays
-          : 0;
+      const calculatedNetDays = Math.max(0, baseProcessed - deductedDays);
       const response = await fetch(
         `${API_URL}/api/documents/${editingDoc.documentid}/networkdays`,
         {
@@ -86,7 +199,7 @@ function OverlayProcessingDays({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             deducteddays: deductedDays,
-            calcnetworkdays: businessDays - deductedDays,
+            calcnetworkdays: calculatedNetDays,
             remarks: formData.remarks.trim(),
           }),
         },
@@ -152,11 +265,6 @@ function OverlayProcessingDays({
 
   if (!isOpen) return null;
 
-  const deductedPreview = parseInt(formData.deducteddays, 10) || 0;
-  const originalDays = editingDoc?.calcnetworkdays ?? 0;
-  const netDays = Math.max(0, originalDays - deductedPreview);
-  const isExceeding = netDays <= 0 && deductedPreview > 0;
-
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-slate-900/50 backdrop-blur-sm p-4 modal-backdrop">
       <div
@@ -167,15 +275,8 @@ function OverlayProcessingDays({
         {/* Header */}
         <div className="modal-header-bar blue px-6 py-5 flex items-start justify-between flex-shrink-0">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-0.5">
-              Processing Days
-            </p>
             <h2 className="text-lg font-extrabold text-white tracking-tight">
-              {viewMode
-                ? 'View Network Days'
-                : editMode
-                  ? 'Adjust Processing Days'
-                  : 'Network Days'}
+              Processing Days
             </h2>
             {editingDoc?.dtsNo && (
               <p className="text-[11px] text-white/60 font-medium mt-0.5">
@@ -215,7 +316,7 @@ function OverlayProcessingDays({
                   Business Days
                 </p>
                 <p className="text-xl font-extrabold text-slate-800">
-                  {originalDays}
+                  {rawWeekdays}
                 </p>
               </div>
               <div className="bg-sky-50 rounded-xl p-3 border border-sky-100 text-center">
@@ -223,126 +324,88 @@ function OverlayProcessingDays({
                   Deducted
                 </p>
                 <p className="text-xl font-extrabold text-sky-700">
-                  {deductedPreview}
+                  {totalDeducted.toFixed(1).replace(/\.0$/, '')}
                 </p>
               </div>
-              <div
-                className={`rounded-xl p-3 border text-center ${isExceeding ? 'bg-rose-50 border-rose-100' : netDays > 5 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}
-              >
-                <p
-                  className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isExceeding ? 'text-rose-400' : netDays > 5 ? 'text-amber-500' : 'text-emerald-500'}`}
-                >
+              <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 text-center">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mb-1">
                   Net Days
                 </p>
-                <p
-                  className={`text-xl font-extrabold ${isExceeding ? 'text-rose-700' : netDays > 5 ? 'text-amber-700' : 'text-emerald-700'}`}
-                >
-                  {netDays}
+                <p className="text-xl font-extrabold text-blue-700">
+                  {netDays.toFixed(1).replace(/\.0$/, '')}
                 </p>
+              </div>
+            </div>
+
+            {/* Auto-Calculated Deductions */}
+            <div className="mt-4 p-4 bg-sky-50/25 border border-sky-100/60 rounded-2xl">
+              <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-blue-800 mb-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                System Calculated Deductions
+              </h4>
+              <div className="space-y-2 text-xs text-slate-600 font-semibold font-sans">
+                <div className="flex justify-between items-center py-0.5 border-b border-dashed border-slate-100 pb-1.5">
+                  <span>Friday Inclusion Status</span>
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold uppercase border ${editingDoc?.include_friday !== false ? 'bg-blue-50 text-blue-800 border-blue-100' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                    {editingDoc?.include_friday !== false ? 'Fridays Included' : 'Fridays Excluded (No Work)'}
+                  </span>
+                </div>
+
+                {editingDoc?.include_friday === false && breakdown.fridays.length > 0 && (
+                  <div className="flex flex-col py-0.5 border-b border-dashed border-slate-100 pb-1.5">
+                    <div className="flex justify-between items-center">
+                      <span>Fridays (No Work)</span>
+                      <span className="font-bold text-slate-700">{breakdown.fridays.length} {breakdown.fridays.length === 1 ? 'day' : 'days'}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {breakdown.fridays.map((f, idx) => (
+                        <span key={idx} className="bg-slate-50 text-slate-600 border border-slate-100 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase">
+                          {formatDateLabel(f)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex flex-col py-0.5 border-b border-dashed border-slate-100 pb-1.5">
+                  <div className="flex justify-between items-start">
+                    <span>Holidays Deducted</span>
+                    <span className="font-bold text-slate-700">{breakdown.holidays.length} {breakdown.holidays.length === 1 ? 'day' : 'days'}</span>
+                  </div>
+                  {breakdown.holidays.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {breakdown.holidays.map((h, idx) => (
+                        <span key={idx} className="bg-sky-50 text-sky-800 border border-sky-100 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase">
+                          {formatDateLabel(h.date)} - {h.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {hourlyAdjustment > 0 && (
+                  <div className="flex flex-col py-0.5">
+                    <div className="flex justify-between items-center">
+                      <span>Late Start / Hourly Adjustment</span>
+                      <span className="font-bold text-slate-700">{hourlyAdjustment.toFixed(1).replace(/\.0$/, '')} {hourlyAdjustment === 1 ? 'day' : 'days'}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5 font-sans">
+                      Adjusted for late afternoon submission or early morning release.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Form */}
-        <div className="px-6 py-5 space-y-4">
-          {errors.calculation && (
-            <div className="flex items-start gap-2.5 bg-rose-50 border border-rose-100 rounded-xl p-3.5">
-              <svg
-                className="h-4 w-4 text-rose-500 flex-shrink-0 mt-0.5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <p className="text-xs font-semibold text-rose-700">
-                {errors.calculation}
-              </p>
-            </div>
-          )}
-          <div className="modal-field">
-            <label className="modal-label">
-              Days to Deduct <span className="req">*</span>
-            </label>
-            <input
-              type="text"
-              name="deducteddays"
-              value={formData.deducteddays}
-              placeholder="e.g. 2"
-              className={`modal-input ${errors.deducteddays ? 'error' : ''}`}
-              onChange={handleInputChange}
-              disabled={viewMode}
-            />
-            {errors.deducteddays && (
-              <p className="modal-error-msg">{errors.deducteddays}</p>
-            )}
-          </div>
-          <div className="modal-field">
-            <label className="modal-label">
-              Reason / Remarks <span className="req">*</span>
-            </label>
-            <textarea
-              name="remarks"
-              value={formData.remarks}
-              onChange={handleInputChange}
-              placeholder="Explain why days are being deducted..."
-              className={`modal-textarea ${errors.remarks ? 'error' : ''}`}
-              disabled={viewMode}
-            />
-            {errors.remarks && (
-              <p className="modal-error-msg">{errors.remarks}</p>
-            )}
-          </div>
-        </div>
-
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50/60 border-t border-slate-100 flex items-center justify-end gap-3 flex-shrink-0">
           <button className="modal-cancel-btn" onClick={() => onClose(false)}>
-            {viewMode ? 'Close' : 'Cancel'}
+            Close
           </button>
-          {!viewMode && (
-            <button
-              className="modal-submit-btn text-white font-bold"
-              style={{
-                background: 'linear-gradient(135deg, #0b4c95 0%, #1460A2 100%)',
-                boxShadow: '0 4px 12px rgba(11,76,149,0.25)',
-              }}
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              type="button"
-            >
-              {isSubmitting ? (
-                <>
-                  <svg
-                    className="animate-spin h-3.5 w-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8z"
-                    />
-                  </svg>
-                  Saving...
-                </>
-              ) : (
-                'Save Changes'
-              )}
-            </button>
-          )}
         </div>
       </div>
     </div>

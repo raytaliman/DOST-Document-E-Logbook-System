@@ -6,22 +6,38 @@ import moment from 'moment';
 import { FiEdit2, FiSlash, FiSearch, FiChevronDown, FiDownload, FiChevronLeft, FiChevronRight, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import '../index.css';
 
-function calculateNetworkDays(startDate, endDate) {
+function calculateNetworkDays(startDate, endDate, holidaysList = [], includeFriday = true) {
   if (!startDate || !endDate || endDate === '-') return 0;
   
   try {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = parseDateReleased(startDate) || new Date(startDate);
+    const end = parseDateReleased(endDate) || new Date(endDate);
     
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
     if (start > end) return 0;
 
     let count = 0;
     const current = new Date(start);
+    const holidaySet = new Set(holidaysList.map(h => typeof h === 'string' ? h : h.holidaydate));
     
     while (current <= end) {
       const day = current.getDay();
-      if (day !== 0 && day !== 6) {
+      let isWorkDay = true;
+      
+      if (day === 0 || day === 6) {
+        isWorkDay = false;
+      } else if (day === 5 && !includeFriday) {
+        isWorkDay = false;
+      } else {
+        const dateStr = current.getFullYear() + '-' + 
+                        String(current.getMonth() + 1).padStart(2, '0') + '-' + 
+                        String(current.getDate()).padStart(2, '0');
+        if (holidaySet.has(dateStr)) {
+          isWorkDay = false;
+        }
+      }
+      
+      if (isWorkDay) {
         count++;
       }
       current.setDate(current.getDate() + 1);
@@ -121,6 +137,7 @@ function NetworkDays() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortConfig, setSortConfig] = useState({ key: 'dateSent', direction: 'desc' });
   const [updatingTimeId, setUpdatingTimeId] = useState(null);
+  const [holidays, setHolidays] = useState([]);
   
   const requestSort = (key) => {
     let direction = 'asc';
@@ -159,6 +176,21 @@ function NetworkDays() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
 
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/holidays`);
+        if (res.ok) {
+          const data = await res.json();
+          setHolidays(data);
+        }
+      } catch (err) {
+        console.error('Error fetching holidays:', err);
+      }
+    };
+    fetchHolidays();
+  }, [API_URL]);
+
   const fetchDocuments = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
@@ -167,6 +199,7 @@ function NetworkDays() {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const data = await response.json();
+      const holidayDates = holidays.map(h => h.holidaydate);
       const filteredDocuments = data
         .filter(doc => {
           if (doc.documentdirection !== 'outgoing') return false;
@@ -175,7 +208,7 @@ function NetworkDays() {
         })
         .map(doc => {
           const businessDays = doc.datereleased && doc.datereleased !== '-' 
-            ? calculateNetworkDays(doc.datesent, doc.datereleased)
+            ? calculateNetworkDays(doc.datesent, doc.datereleased, holidayDates, doc.include_friday !== false)
             : 0;
 
           const processingDays = doc.calcnetworkdays !== null 
@@ -203,7 +236,8 @@ function NetworkDays() {
             amount: doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : null,
             processedBy: doc.processedby || '-',
             particulars: doc.particulars || '-',
-            documentDirection: doc.documentdirection
+            documentDirection: doc.documentdirection,
+            include_friday: doc.include_friday
           };
         })
         .filter(doc => !doc.isarchive)
@@ -215,7 +249,7 @@ function NetworkDays() {
     } finally {
       setLoading(false);
     }
-  }, [API_URL]);
+  }, [API_URL, holidays]);
 
   useEffect(() => {
     fetchDocuments();
@@ -246,7 +280,9 @@ function NetworkDays() {
       deducteddays: doc.deducteddays !== null ? doc.deducteddays : 0,
       dateSent: doc.dateSent,
       dateReceive: doc.dateReceive,
-      calcnetworkdays: doc.calcnetworkdays
+      calcnetworkdays: doc.calcnetworkdays,
+      include_friday: doc.include_friday,
+      daysProcessed: doc.daysProcessed
     });
     
     setIsViewMode(false);
@@ -364,7 +400,7 @@ function NetworkDays() {
   };
 
   const filteredDocuments = documents.filter(doc => {
-    const docDate = new Date(doc.dateSent);
+    const docDate = moment(doc.dateSent).toDate();
     const search = searchTerm.toLowerCase();
     const docType = doc.documentType?.toLowerCase().replace(/_/g, ' ');
     const route = doc.route?.toLowerCase().replace(/_/g, ' ');
@@ -387,8 +423,8 @@ function NetworkDays() {
     let matchesMonth = true;
     let matchesYear = true;
     if (selectedMonth !== 'All' || selectedYear !== 'All') {
-      const dateReleased = parseDateReleased(doc.dateReceive);
-      if (dateReleased) {
+      const dateReleased = parseDateReleased(doc.dateReceive) || moment(doc.dateSent).toDate();
+      if (dateReleased && !isNaN(dateReleased.getTime())) {
         matchesMonth = selectedMonth === 'All' || dateReleased.toLocaleString('en-US', { month: 'long' }) === selectedMonth;
         matchesYear = selectedYear === 'All' || dateReleased.getFullYear() === selectedYear;
       } else {
@@ -495,7 +531,7 @@ function NetworkDays() {
 
   const handleExportToExcel = async () => {
     const exportDocuments = documents.filter((doc) => {
-      const docDate = new Date(doc.dateSent);
+      const docDate = moment(doc.dateSent).toDate();
       const matchesMonth =
         selectedMonth === 'All' ||
         docDate.toLocaleString('en-US', { month: 'long' }) === selectedMonth;
@@ -1470,6 +1506,7 @@ function NetworkDays() {
           viewMode={isViewMode}
           editMode={isEditMode}
           calculateNetworkDays={calculateNetworkDays}
+          holidaysList={holidays}
         />
       )}
     </div>

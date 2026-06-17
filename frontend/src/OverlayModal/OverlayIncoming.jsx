@@ -13,10 +13,27 @@ function OverlayIncoming({
   const popupRef = useRef(null);
   const [documentTypes, setDocumentTypes] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [payees, setPayees] = useState([]);
+  const [payeeSearch, setPayeeSearch] = useState('');
+  const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
+  const [customPayee, setCustomPayee] = useState('');
+  const [showCustomPayee, setShowCustomPayee] = useState(false);
+  const payeeDropdownRef = useRef(null);
+
   const [showCustomDocType, setShowCustomDocType] = useState(false);
   const [customDocType, setCustomDocType] = useState('');
   const [selectedDocType, setSelectedDocType] = useState('');
-  const [formData, setFormData] = useState({ dtsNo: '', seriesNo: '', particulars: '', queueNo: '', processedBy: '', time: '', route: '' });
+  const [formData, setFormData] = useState({
+    dtsNo: '',
+    seriesNo: '',
+    particulars: '',
+    queueNo: '',
+    processedBy: '',
+    time: '',
+    route: '',
+    payee: '',
+    amount: '',
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [auditTrail, setAuditTrail] = useState([]);
@@ -24,6 +41,18 @@ function OverlayIncoming({
   const [auditLoading, setAuditLoading] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL;
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (payeeDropdownRef.current && !payeeDropdownRef.current.contains(event.target)) {
+        setIsPayeeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Initialize form data when editing/prefill
   useEffect(() => {
@@ -36,7 +65,12 @@ function OverlayIncoming({
         processedBy: editingDoc.processedby || editingDoc.processedBy || '-',
         time: editingDoc.time && editingDoc.time !== '-' ? editingDoc.time : '',
         route: editingDoc.route && editingDoc.route !== '-' ? editingDoc.route : '',
+        amount: editingDoc.amount || '',
+        payee: editingDoc.payee && editingDoc.payee !== '-' ? editingDoc.payee : '',
       });
+      setPayeeSearch(editingDoc.payee && editingDoc.payee !== '-' ? editingDoc.payee : '');
+      setShowCustomPayee(false);
+      setCustomPayee('');
       // Apply case-insensitive lookup if documentTypes is already loaded
       const matched = documentTypes.find(
         (t) => t.documenttype.toLowerCase() === (editingDoc.documenttype || '').toLowerCase()
@@ -44,7 +78,20 @@ function OverlayIncoming({
       setSelectedDocType(matched ? matched.documenttype : (editingDoc.documenttype || ''));
       setShowCustomDocType(false);
     } else {
-      setFormData({ dtsNo: '', seriesNo: '', particulars: '', queueNo: '', processedBy: '', time: '', route: '' });
+      setFormData({
+        dtsNo: '',
+        seriesNo: '',
+        particulars: '',
+        queueNo: '',
+        processedBy: '',
+        time: '',
+        route: '',
+        payee: '',
+        amount: '',
+      });
+      setPayeeSearch('');
+      setShowCustomPayee(false);
+      setCustomPayee('');
       setSelectedDocType('');
       setShowCustomDocType(false);
       setErrors({});
@@ -84,6 +131,20 @@ function OverlayIncoming({
       }
     };
     if (isOpen) fetchRoutes();
+  }, [isOpen, API_URL]);
+
+  // Fetch payees when overlay opens
+  useEffect(() => {
+    const fetchPayees = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/payees`);
+        const data = await response.json();
+        setPayees(data);
+      } catch (error) {
+        console.error('Error fetching payees:', error);
+      }
+    };
+    if (isOpen) fetchPayees();
   }, [isOpen, API_URL]);
 
   // Fetch audit trail whenever the editing document changes
@@ -133,7 +194,15 @@ function OverlayIncoming({
     return String(val);
   };
 
-  // Removed payees fetcher
+  const handleInputChange = (e) => {
+    if (viewMode) return;
+    const { name, value } = e.target;
+    let newValue = value;
+    if (name === 'dtsNo') {
+      newValue = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    }
+    setFormData((prev) => ({ ...prev, [name]: newValue }));
+  };
 
   const handleDtsNoChange = (e) => {
     if (viewMode) return;
@@ -270,7 +339,9 @@ function OverlayIncoming({
   const handleSubmit = async () => {
     const newErrors = {};
     if (!formData.dtsNo) newErrors.dtsNo = 'DTS No. is required.';
-    if (!selectedDocType) newErrors.documentType = 'Document type is required.';
+    if (formData.payee === 'Other' && !customPayee.trim()) {
+      newErrors.customPayee = 'Please enter new payee name.';
+    }
 
     if (
       !newErrors.dtsNo &&
@@ -307,17 +378,37 @@ function OverlayIncoming({
     setIsSubmitting(true);
 
     try {
+      let finalPayee = formData.payee?.trim() || null;
+      if (formData.payee === 'Other' && customPayee.trim()) {
+        const payeeResponse = await fetch(`${API_URL}/api/payees`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payeename: customPayee.trim() }),
+        });
+        if (payeeResponse.ok) {
+          const savedPayee = await payeeResponse.json();
+          finalPayee = savedPayee.payeename;
+        } else {
+          const pErr = await payeeResponse.json();
+          if (pErr.error === 'Payee already exists') {
+            finalPayee = customPayee.trim();
+          } else {
+            throw new Error(pErr.error || 'Failed to save new payee');
+          }
+        }
+      }
+
       const admin = JSON.parse(localStorage.getItem('admin') || '{}');
       const documentData = {
         dtsno: formData.dtsNo.trim().toUpperCase(),
         seriesno: formData.seriesNo?.trim() || null,
         particulars: formData.particulars?.trim() || null,
         queueno: formData.queueNo?.trim() || null,
-        documenttype: selectedDocType.trim(),
+        documenttype: selectedDocType ? selectedDocType.trim() : null,
         documentdirection: 'incoming',
         processedby: admin.adminname || null,
-        payee: null,
-        amount: null,
+        payee: finalPayee,
+        amount: formData.amount ? parseFloat(formData.amount) : null,
         time: formData.time || null,
         route: formData.route || null,
         ...(editingDoc
@@ -468,16 +559,17 @@ function OverlayIncoming({
                 {errors.seriesNo && <p className="modal-error-msg">{errors.seriesNo}</p>}
               </div>
 
-              {/* Queue No */}
+              {/* Gross Amount Field */}
               <div className="modal-field">
-                <label className="modal-label">Queue No.</label>
+                <label className="modal-label">Gross Amount</label>
                 <input
-                  type="text"
-                  name="queueNo"
-                  placeholder="e.g. Q-001"
+                  type={viewMode ? "text" : "number"}
+                  name="amount"
+                  step="0.01"
+                  placeholder="e.g. 1500.00"
                   className="modal-input"
-                  value={formData.queueNo}
-                  onChange={handleQueueNoChange}
+                  value={formData.amount}
+                  onChange={handleInputChange}
                   readOnly={viewMode}
                 />
               </div>
@@ -495,103 +587,102 @@ function OverlayIncoming({
                 </div>
               )}
 
-              {/* Document Type Dropdown */}
-              <div className="modal-field">
-                <label className="modal-label">
-                  Document Type <span className="req">*</span>
-                </label>
-                <select
-                  className={`modal-input modal-select ${errors.documentType ? 'error' : ''}`}
-                  value={selectedDocType}
-                  onChange={handleDocTypeChange}
-                  disabled={viewMode}
-                >
-                  <option value="">Select Document Type</option>
-                  {selectedDocType &&
-                    selectedDocType !== 'Others' &&
-                    !documentTypes.some(
-                      (type) => type.documenttype.toLowerCase() === selectedDocType.toLowerCase()
-                    ) && (
-                      <option value={selectedDocType}>{selectedDocType}</option>
+              {/* Payee Selection (col-span-2) */}
+              <div className="modal-field relative font-sans md:col-span-2" ref={payeeDropdownRef}>
+                <label className="modal-label">Payee</label>
+                {viewMode ? (
+                  <input
+                    type="text"
+                    className="modal-input"
+                    value={formData.payee}
+                    disabled
+                  />
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Type to search or select payee..."
+                      className="modal-input w-full pr-10"
+                      value={payeeSearch}
+                      onChange={(e) => {
+                        setPayeeSearch(e.target.value);
+                        setIsPayeeDropdownOpen(true);
+                        if (!e.target.value) {
+                          setFormData({ ...formData, payee: '' });
+                          setShowCustomPayee(false);
+                        }
+                      }}
+                      onFocus={() => setIsPayeeDropdownOpen(true)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                    >
+                      <svg className={`w-4 h-4 transition-transform duration-200 ${isPayeeDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                     {isPayeeDropdownOpen && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-slate-100">
+                        {/* Other option at the top */}
+                        <div
+                          className="px-4 py-2.5 text-xs font-bold text-sky-700 hover:bg-sky-50 cursor-pointer transition-colors flex items-center gap-1.5"
+                          onClick={() => {
+                            setFormData({ ...formData, payee: 'Other' });
+                            setPayeeSearch('Other');
+                            setIsPayeeDropdownOpen(false);
+                            setShowCustomPayee(true);
+                          }}
+                        >
+                          <span>+ Other (Type a new payee...)</span>
+                        </div>
+
+                        {payees
+                          .filter((p) => {
+                            if (payeeSearch === formData.payee) return true;
+                            return p.payeename.toLowerCase().includes(payeeSearch.toLowerCase());
+                          })
+                          .map((p) => (
+                            <div
+                              key={p.payeeid}
+                              className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-colors"
+                              onClick={() => {
+                                setFormData({ ...formData, payee: p.payeename });
+                                setPayeeSearch(p.payeename);
+                                setIsPayeeDropdownOpen(false);
+                                setShowCustomPayee(false);
+                              }}
+                            >
+                              {p.payeename}
+                            </div>
+                          ))}
+                      </div>
                     )}
-                  {documentTypes.map((type) => (
-                    <option key={type.documentid} value={type.documenttype}>
-                      {type.documenttype}
-                    </option>
-                  ))}
-                  <option value="Others">Others...</option>
-                </select>
-                {errors.documentType && (
-                  <p className="modal-error-msg">{errors.documentType}</p>
+                  </div>
+                )}
+                {errors.payee && (
+                  <p className="modal-error-msg">{errors.payee}</p>
                 )}
               </div>
 
-              {/* Time Received */}
-              <div className="modal-field">
-                <label className="modal-label">Time Received</label>
-                <select
-                  name="time"
-                  value={formData.time}
-                  onChange={handleTimeChange}
-                  className="modal-input modal-select"
-                  disabled={viewMode}
-                >
-                  <option value="">-</option>
-                  <option value="AM">AM</option>
-                  <option value="PM">PM</option>
-                  <option value="PM_Late">PM Late</option>
-                </select>
-              </div>
-
-              {/* Routed To */}
-              <div className="modal-field">
-                <label className="modal-label">Routed To</label>
-                <select
-                  name="route"
-                  value={formData.route}
-                  onChange={handleRouteChange}
-                  className="modal-input modal-select"
-                  disabled={viewMode}
-                >
-                  <option value="">Select Route</option>
-                  {routes.map((r) => (
-                    <option key={r.routeid} value={r.routename}>
-                      {r.routename}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Custom Document Type Input (col-span-2 if active) */}
-              {showCustomDocType && !viewMode && (
-                <div className="md:col-span-2 p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
-                  <label className="modal-label">Custom Document Type</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Enter new type"
-                      className={`modal-input flex-1 !h-10 ${errors.customDocType ? 'error' : ''}`}
-                      value={customDocType}
-                      onChange={(e) => {
-                        setCustomDocType(e.target.value);
-                        setErrors((prev) => ({ ...prev, customDocType: '' }));
-                      }}
-                    />
-                    <button
-                      className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center"
-                      onClick={() => handleAddOrRemoveDocType('add')}
-                    >
-                      Add
-                    </button>
-                    <button
-                      className="h-10 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center"
-                      onClick={() => handleAddOrRemoveDocType('remove')}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  {errors.customDocType && (
-                    <p className="modal-error-msg">{errors.customDocType}</p>
+              {/* Custom Payee input (col-span-2) */}
+              {showCustomPayee && !viewMode && (
+                <div className="modal-field animate-fadeIn md:col-span-2">
+                  <label className="modal-label text-sky-700">New Payee Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter new payee name..."
+                    className="modal-input"
+                    value={customPayee}
+                    onChange={(e) => {
+                      setCustomPayee(e.target.value);
+                      if (errors.customPayee) setErrors((prev) => ({ ...prev, customPayee: '' }));
+                    }}
+                  />
+                  {errors.customPayee && (
+                    <p className="modal-error-msg">{errors.customPayee}</p>
                   )}
                 </div>
               )}
@@ -618,6 +709,133 @@ function OverlayIncoming({
                   </div>
                 </div>
               )}
+
+              {/* For Budget Personnel Only Section (col-span-2) */}
+              <div className="md:col-span-2 mt-2 p-4 bg-sky-50/50 border border-sky-100/80 rounded-2xl">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#0b4c95] mb-3 flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-[#0b4c95]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  For Budget Personnel Only
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Queue No */}
+                  <div className="modal-field">
+                    <label className="modal-label">Queue No.</label>
+                    <input
+                      type="text"
+                      name="queueNo"
+                      placeholder="e.g. Q-001"
+                      className="modal-input"
+                      value={formData.queueNo}
+                      onChange={handleQueueNoChange}
+                      readOnly={viewMode}
+                    />
+                  </div>
+
+                  {/* Document Type Dropdown */}
+                  <div className="modal-field">
+                    <label className="modal-label">
+                      Document Type
+                    </label>
+                    <select
+                      className={`modal-input modal-select ${errors.documentType ? 'error' : ''}`}
+                      value={selectedDocType}
+                      onChange={handleDocTypeChange}
+                      disabled={viewMode}
+                    >
+                      <option value="">Select Document Type</option>
+                      {selectedDocType &&
+                        selectedDocType !== 'Others' &&
+                        !documentTypes.some(
+                          (type) => type.documenttype.toLowerCase() === selectedDocType.toLowerCase()
+                        ) && (
+                          <option value={selectedDocType}>{selectedDocType}</option>
+                        )}
+                      {documentTypes.map((type) => (
+                        <option key={type.documentid} value={type.documenttype}>
+                          {type.documenttype}
+                        </option>
+                      ))}
+                      <option value="Others">Others...</option>
+                    </select>
+                    {errors.documentType && (
+                      <p className="modal-error-msg">{errors.documentType}</p>
+                    )}
+                  </div>
+
+                  {/* Time Received */}
+                  <div className="modal-field">
+                    <label className="modal-label">Time Received</label>
+                    <select
+                      name="time"
+                      value={formData.time}
+                      onChange={handleTimeChange}
+                      className="modal-input modal-select"
+                      disabled={viewMode}
+                    >
+                      <option value="">-</option>
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                      <option value="PM_Late">PM Late</option>
+                    </select>
+                  </div>
+
+                  {/* Routed To */}
+                  <div className="modal-field">
+                    <label className="modal-label">Routed To</label>
+                    <select
+                      name="route"
+                      value={formData.route}
+                      onChange={handleRouteChange}
+                      className="modal-input modal-select"
+                      disabled={viewMode}
+                    >
+                      <option value="">Select Route</option>
+                      {routes.map((r) => (
+                        <option key={r.routeid} value={r.routename}>
+                          {r.routename}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Custom Document Type Input (col-span-2 if active) */}
+                  {showCustomDocType && !viewMode && (
+                    <div className="md:col-span-2 p-3 bg-white border border-slate-100 rounded-xl space-y-2">
+                      <label className="modal-label">Custom Document Type</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Enter new type"
+                          className={`modal-input flex-1 !h-10 ${errors.customDocType ? 'error' : ''}`}
+                          value={customDocType}
+                          onChange={(e) => {
+                            setCustomDocType(e.target.value);
+                            setErrors((prev) => ({ ...prev, customDocType: '' }));
+                          }}
+                        />
+                        <button
+                          className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+                          onClick={() => handleAddOrRemoveDocType('add')}
+                        >
+                          Add
+                        </button>
+                        <button
+                          className="h-10 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center"
+                          onClick={() => handleAddOrRemoveDocType('remove')}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      {errors.customDocType && (
+                        <p className="modal-error-msg">{errors.customDocType}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
 

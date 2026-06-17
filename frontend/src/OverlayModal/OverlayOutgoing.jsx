@@ -29,7 +29,7 @@ function OverlayOutgoing({
     seriesNo: '',
     particulars: '',
     queueNo: '',
-    includeFriday: true,
+    includeFriday: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [initialDate, setInitialDate] = useState(null);
@@ -310,7 +310,7 @@ function OverlayOutgoing({
         seriesNo: '',
         particulars: '',
         queueNo: '',
-        includeFriday: true,
+        includeFriday: false,
       });
       setPayeeSearch('');
       setCustomPayee('');
@@ -477,10 +477,6 @@ function OverlayOutgoing({
     if (!formData.dtsNo || formData.dtsNo === '') {
       newErrors.dtsNo = 'This field is required.';
     }
-    if (!selectedDocType || selectedDocType === '') {
-      newErrors.documentType = 'This field is required.';
-    }
-
     // Validate date received only when required
     if (
       !viewMode &&
@@ -590,7 +586,7 @@ function OverlayOutgoing({
         seriesno: formData.seriesNo?.trim() || null,
         particulars: formData.particulars?.trim() || null,
         queueno: formData.queueNo?.trim() || null,
-        documenttype: selectedDocType.trim(),
+        documenttype: selectedDocType ? selectedDocType.trim() : null,
         route: formData.route.trim(),
         remarks: formData.remarks?.trim() || null,
         documentdirection: 'outgoing',
@@ -818,7 +814,7 @@ function OverlayOutgoing({
               {/* Document Type */}
               <div className="modal-field">
                 <label className="modal-label">
-                  Document Type <span className="req">*</span>
+                  Document Type
                 </label>
                 <select
                   className={`modal-input modal-select ${errors.documentType ? 'error' : ''}`}
@@ -947,6 +943,19 @@ function OverlayOutgoing({
 
                     {isPayeeDropdownOpen && (
                       <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-slate-100">
+                        {/* Other option at the top */}
+                        <div
+                          className="px-4 py-2.5 text-xs font-bold text-sky-700 hover:bg-sky-50 cursor-pointer transition-colors flex items-center gap-1.5"
+                          onClick={() => {
+                            setFormData({ ...formData, payee: 'Other' });
+                            setPayeeSearch('Other');
+                            setIsPayeeDropdownOpen(false);
+                            setShowCustomPayee(true);
+                          }}
+                        >
+                          <span>+ Other (Type a new payee...)</span>
+                        </div>
+
                         {/* Filtered list of payees */}
                         {payees
                           .filter((p) => {
@@ -967,19 +976,6 @@ function OverlayOutgoing({
                               {p.payeename}
                             </div>
                           ))}
-
-                        {/* Other option */}
-                        <div
-                          className="px-4 py-2.5 text-xs font-bold text-sky-700 hover:bg-sky-50 cursor-pointer transition-colors flex items-center gap-1.5"
-                          onClick={() => {
-                            setFormData({ ...formData, payee: 'Other' });
-                            setPayeeSearch('Other');
-                            setIsPayeeDropdownOpen(false);
-                            setShowCustomPayee(true);
-                          }}
-                        >
-                          <span>+ Other (Type a new payee...)</span>
-                        </div>
                       </div>
                     )}
                   </div>
