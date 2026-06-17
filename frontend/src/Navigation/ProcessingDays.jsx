@@ -3,7 +3,7 @@ import OverlayProcessingDays from '../OverlayModal/OverlayProcessingDays';
 import Swal from 'sweetalert2'; 
 import { io } from 'socket.io-client';
 import moment from 'moment';
-import { FiEdit2, FiSlash, FiSearch, FiChevronDown, FiDownload, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiEdit2, FiSlash, FiSearch, FiChevronDown, FiDownload, FiChevronLeft, FiChevronRight, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import '../index.css';
 
 function calculateNetworkDays(startDate, endDate) {
@@ -119,7 +119,17 @@ function NetworkDays() {
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [sortConfig, setSortConfig] = useState({ key: 'dateSent', direction: 'desc' });
   const [updatingTimeId, setUpdatingTimeId] = useState(null);
+  
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   const [columnFilters, setColumnFilters] = useState({
     dateSent: '',
     dtsNo: '',
@@ -140,7 +150,7 @@ function NetworkDays() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedMonth, selectedYear, columnFilters]);
+  }, [searchTerm, selectedMonth, selectedYear, columnFilters, sortConfig]);
 
   const API_URL = import.meta.env.VITE_API_URL;
   const months = ['All', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -439,6 +449,33 @@ function NetworkDays() {
 
     return matchesSearch && matchesMonth && matchesYear && matchesColumnFilters;
   });
+
+  // Sorting calculation
+  if (sortConfig.key !== null) {
+    filteredDocuments.sort((a, b) => {
+      let aVal = a[sortConfig.key];
+      let bVal = b[sortConfig.key];
+
+      // Custom comparisons
+      if (sortConfig.key === 'daysProcessed') {
+        aVal = a.daysProcessed !== null && a.daysProcessed !== undefined ? a.daysProcessed : a.calcnetworkdays;
+        bVal = b.daysProcessed !== null && b.daysProcessed !== undefined ? b.daysProcessed : b.calcnetworkdays;
+      }
+
+      if (aVal === null || aVal === undefined || aVal === '-') return 1;
+      if (bVal === null || bVal === undefined || bVal === '-') return -1;
+
+      if (typeof aVal === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      } else {
+        return sortConfig.direction === 'asc'
+          ? aVal - bVal
+          : bVal - aVal;
+      }
+    });
+  }
 
   // Pagination calculation
   const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
@@ -783,12 +820,35 @@ function NetworkDays() {
     )
   );
 
+  const renderSortIcon = (key) => {
+    if (sortConfig.key !== key) {
+      return <span className="opacity-30 ml-1 text-[10px] select-none">⇅</span>;
+    }
+    return sortConfig.direction === 'asc' 
+      ? <FiArrowUp className="inline w-3 h-3 ml-1 text-[#0b4c95]" />
+      : <FiArrowDown className="inline w-3 h-3 ml-1 text-[#0b4c95]" />;
+  };
+
   const validShowedProcessingDays = filteredDocuments
     .map(doc => doc.daysProcessed !== null && doc.daysProcessed !== undefined ? doc.daysProcessed : doc.calcnetworkdays)
     .filter(days => days !== null && !isNaN(days) && days > 0);
   const showedAverageDays = validShowedProcessingDays.length > 0
     ? (validShowedProcessingDays.reduce((sum, days) => sum + days, 0) / validShowedProcessingDays.length).toFixed(2)
     : '0.00';
+
+  const uniqueValues = {
+    dateSent: [...new Set(documents.map((d) => formatDateOnly(d.dateSent)))].filter((v) => v !== '-').sort((a, b) => new Date(a) - new Date(b)),
+    direction: [...new Set(documents.map((d) => d.documentDirection))].filter(Boolean).sort(),
+    payee: [...new Set(documents.map((d) => d.payee))].filter((v) => v && v !== '-').sort(),
+    docType: [...new Set(documents.map((d) => d.documentType))].filter(Boolean).sort(),
+    dateReleased: [...new Set(documents.map((d) => formatDateOnly(d.dateReceive)))].filter((v) => v !== '-').sort(),
+    daysProcessed: [...new Set(documents.map((d) => d.daysProcessed !== null && d.daysProcessed !== undefined ? String(d.daysProcessed) : (d.calcnetworkdays !== null && d.calcnetworkdays !== undefined ? String(d.calcnetworkdays) : '-')))].filter((v) => v !== '-').sort((a, b) => Number(a) - Number(b)),
+    route: [...new Set(documents.map((d) => d.route))].filter((v) => v && v !== '-').sort(),
+    processedBy: [...new Set(documents.map((d) => d.processedBy))].filter((v) => v && v !== '-').sort(),
+  };
+
+  const selectFilterClass =
+    'text-[11px] p-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:border-sky-500 cursor-pointer w-full';
 
   return (
     <div className="space-y-6">
@@ -870,26 +930,251 @@ function NetworkDays() {
         </div>
       </div>
 
+      {/* Horizontal Column Filters Panel */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 flex flex-wrap items-center gap-4 shadow-3xs">
+        <div className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mr-1">Filters:</div>
+
+        {/* Date Sent/Received */}
+        <div className="flex flex-col gap-1 w-32">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+            {admin?.documentdirection === 'incoming' ? 'Date Sent' : 'Date Received'}
+          </span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.dateSent}
+            onChange={(e) => setColumnFilters({ ...columnFilters, dateSent: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.dateSent.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Direction */}
+        <div className="flex flex-col gap-1 w-28">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Direction</span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.direction}
+            onChange={(e) => setColumnFilters({ ...columnFilters, direction: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.direction.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Payee */}
+        <div className="flex flex-col gap-1 w-36">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Payee</span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.payee}
+            onChange={(e) => setColumnFilters({ ...columnFilters, payee: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.payee.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Document Type */}
+        <div className="flex flex-col gap-1 w-40">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Document Type</span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.docType}
+            onChange={(e) => setColumnFilters({ ...columnFilters, docType: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.docType.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Released */}
+        <div className="flex flex-col gap-1 w-32">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date Released</span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.dateReleased}
+            onChange={(e) => setColumnFilters({ ...columnFilters, dateReleased: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.dateReleased.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Routed To */}
+        <div className="flex flex-col gap-1 w-32">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Routed To</span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.route}
+            onChange={(e) => setColumnFilters({ ...columnFilters, route: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.route.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Processed By */}
+        <div className="flex flex-col gap-1 w-36">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Processed By</span>
+          <select
+            className={selectFilterClass}
+            value={columnFilters.processedBy}
+            onChange={(e) => setColumnFilters({ ...columnFilters, processedBy: e.target.value })}
+          >
+            <option value="">All</option>
+            {uniqueValues.processedBy.map((val, i) => (
+              <option key={i} value={val}>{val}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Reset Button */}
+        {Object.keys(columnFilters).some((key) => columnFilters[key] !== '') && (
+          <button
+            onClick={() =>
+              setColumnFilters({
+                dateSent: '',
+                dtsNo: '',
+                direction: '',
+                docType: '',
+                timeReceived: '',
+                dateReleased: '',
+                daysProcessed: '',
+                route: '',
+                processedBy: '',
+                payee: '',
+                seriesNo: '',
+                remarks: '',
+              })
+            }
+            className="ml-auto text-xs font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
+          >
+            Reset Filters
+          </button>
+        )}
+      </div>
+
       {/* Processing Days Table Container */}
       <div className="table-container-premium shadow-2xs">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin">
           <table className="table-premium w-full text-left border-collapse relative">
             <thead>
               <tr>
-                <th className="w-[12%] text-center">
-                  {admin?.documentdirection === 'incoming' ? 'Date Sent' : 'Date Received'}
+                <th
+                  className="w-[12%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('dateSent')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>{admin?.documentdirection === 'incoming' ? 'Date Sent' : 'Date Received'}</span>
+                    {renderSortIcon('dateSent')}
+                  </div>
                 </th>
-                <th className="w-[10%] text-center">DTS No.</th>
-                <th className="w-[10%] text-center">Series No.</th>
-                <th className="w-[10%] text-center">Queue No.</th>
-                <th className="w-[9%] text-center">Direction</th>
-                <th className="w-[12%]">Payee</th>
-                <th className="w-[15%]">Document Type</th>
-                <th className="w-[12%] text-center">Date Released</th>
-                <th className="w-[12%] text-center font-bold">Processing Days</th>
-                <th className="w-[12%]">Routed To</th>
-                <th className="w-[12%]">Processed By</th>
-                <th className="w-[10%] text-center">Actions</th>
+                <th
+                  className="w-[10%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('dtsNo')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>DTS No.</span>
+                    {renderSortIcon('dtsNo')}
+                  </div>
+                </th>
+                <th
+                  className="w-[10%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('seriesNo')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Series No.</span>
+                    {renderSortIcon('seriesNo')}
+                  </div>
+                </th>
+                <th
+                  className="w-[10%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('queueNo')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Queue No.</span>
+                    {renderSortIcon('queueNo')}
+                  </div>
+                </th>
+                <th
+                  className="w-[9%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('documentDirection')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Direction</span>
+                    {renderSortIcon('documentDirection')}
+                  </div>
+                </th>
+                <th
+                  className="w-[12%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('payee')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Payee</span>
+                    {renderSortIcon('payee')}
+                  </div>
+                </th>
+                <th
+                  className="w-[15%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('documentType')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Document Type</span>
+                    {renderSortIcon('documentType')}
+                  </div>
+                </th>
+                <th
+                  className="w-[12%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('dateReceive')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Date Released</span>
+                    {renderSortIcon('dateReceive')}
+                  </div>
+                </th>
+                <th
+                  className="w-[12%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('daysProcessed')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Processing Days</span>
+                    {renderSortIcon('daysProcessed')}
+                  </div>
+                </th>
+                <th
+                  className="w-[12%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('route')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Routed To</span>
+                    {renderSortIcon('route')}
+                  </div>
+                </th>
+                <th
+                  className="w-[12%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                  onClick={() => requestSort('processedBy')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Processed By</span>
+                    {renderSortIcon('processedBy')}
+                  </div>
+                </th>
+                <th className="w-[10%] text-center py-3 select-none">
+                  <span>Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>

@@ -233,7 +233,7 @@ function Login() {
               </button>
             </div>
             <p className="text-[10px] text-center text-slate-400 font-semibold mt-4 leading-relaxed">
-              Developed by DOST Ilocos Region - ITSM Unit<br />v2.0
+              Developed by DOST Ilocos Region - ITSM Unit<br />v2.1
             </p>
           </div>
         </div>

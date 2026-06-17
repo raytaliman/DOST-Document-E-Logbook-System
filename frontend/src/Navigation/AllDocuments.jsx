@@ -20,6 +20,8 @@ import {
   FiTrash2,
   FiChevronLeft,
   FiChevronRight,
+  FiArrowUp,
+  FiArrowDown,
 } from 'react-icons/fi';
 import '../index.css';
 
@@ -102,11 +104,12 @@ const parseToDate = (dateStr) => {
 };
 
 function AllDocs() {
+  const API_URL = import.meta.env.VITE_API_URL;
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(
-    new Date().toLocaleString('en-US', { month: 'long' }),
+    new Date().toLocaleString('en-US', { month: 'long' })
   );
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
@@ -132,13 +135,37 @@ function AllDocs() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sortConfig, setSortConfig] = useState({ key: 'dateSent', direction: 'desc' });
   const [activeTab, setActiveTab] = useState('All');
+
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const [routes, setRoutes] = useState([]);
+  const [updatingRouteId, setUpdatingRouteId] = useState(null);
+
+  useEffect(() => {
+    const fetchRoutes = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/routes`);
+        const data = await response.json();
+        setRoutes(data);
+      } catch (err) {
+        console.error('Error fetching routes:', err);
+      }
+    };
+    fetchRoutes();
+  }, [API_URL]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedMonth, selectedYear, columnFilters, activeTab]);
+  }, [searchTerm, selectedMonth, selectedYear, columnFilters, activeTab, sortConfig]);
 
-  const API_URL = import.meta.env.VITE_API_URL;
   const months = [
     'All',
     'January',
@@ -155,7 +182,7 @@ function AllDocs() {
     'December',
   ];
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
+  const years = ['All', ...Array.from({ length: 6 }, (_, i) => currentYear - i)];
   const adminData = localStorage.getItem('admin');
   const admin = adminData ? JSON.parse(adminData) : null;
   const adminDirection = (
@@ -221,6 +248,8 @@ function AllDocs() {
         particulars: doc.particulars || '-',
         queueNo: doc.queueno || '-',
         include_friday: doc.include_friday,
+        calcnetworkdays: doc.calcnetworkdays !== null && doc.calcnetworkdays !== undefined ? Number(doc.calcnetworkdays) : null,
+        networkdaysremarks: doc.networkdaysremarks || '-',
       }));
       const filtered = transformedDocuments
         .filter((doc) => !doc.archiveStatus)
@@ -284,7 +313,11 @@ function AllDocs() {
     setIsViewMode(false);
     setIsEditMode(true);
 
-    if (doc.documentDirection === 'incoming') {
+    if (
+      doc.documentDirection === 'incoming' ||
+      (adminDirection === 'incoming' &&
+        (doc.dateReceive === '-' || !doc.dateReceive))
+    ) {
       setShowIncomingModal(true);
       setShowOutgoingModal(false);
     } else {
@@ -430,6 +463,48 @@ function AllDocs() {
     }
   };
 
+  const handleRouteUpdate = async (docId, newRoute) => {
+    setUpdatingRouteId(docId);
+    try {
+      const response = await fetch(`${API_URL}/api/documents/${docId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ route: newRoute }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update route');
+      }
+
+      setDocuments((prevDocs) =>
+        prevDocs.map((doc) =>
+          doc.id === docId ? { ...doc, route: newRoute || '-' } : doc,
+        ),
+      );
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Route Updated',
+        text: 'Routed To has been updated.',
+        timer: 1200,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    } catch (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to Update',
+        text: error.message || 'Failed to update route.',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    } finally {
+      setUpdatingRouteId(null);
+    }
+  };
+
   const filteredDocuments = documents.filter((doc) => {
     const docDate = new Date(doc.dateSent);
     const search = searchTerm.toLowerCase();
@@ -449,7 +524,8 @@ function AllDocs() {
       (direction || '').includes(search) ||
       (processedByVal || '').includes(search) ||
       (doc.payee?.toLowerCase() || '').includes(search) ||
-      (doc.amount !== null && doc.amount !== undefined ? String(doc.amount) : '').includes(search);
+      (doc.amount !== null && doc.amount !== undefined ? String(doc.amount) : '').includes(search) ||
+      (doc.networkdaysremarks?.toLowerCase() || '').includes(search);
 
     const matchesMonth =
       selectedMonth === 'All' ||
@@ -490,12 +566,17 @@ function AllDocs() {
       (columnFilters.daysProcessed === '' ||
         (doc.daysProcessed !== null && doc.daysProcessed !== undefined
           ? String(doc.daysProcessed) === columnFilters.daysProcessed
-          : false) ||
-        (doc.daysProcessed === null && columnFilters.daysProcessed === '-')) &&
+          : (doc.calcnetworkdays !== null && doc.calcnetworkdays !== undefined
+             ? String(doc.calcnetworkdays) === columnFilters.daysProcessed
+             : false)) ||
+        (doc.daysProcessed === null && doc.calcnetworkdays === null && columnFilters.daysProcessed === '-')) &&
       (columnFilters.route === '' ||
         (route || '').includes(columnFilters.route.toLowerCase())) &&
       (columnFilters.remarks === '' ||
         (doc.remarks || '')
+          .toLowerCase()
+          .includes(columnFilters.remarks.toLowerCase()) ||
+        (doc.networkdaysremarks || '')
           .toLowerCase()
           .includes(columnFilters.remarks.toLowerCase())) &&
       (columnFilters.processedBy === '' ||
@@ -513,6 +594,33 @@ function AllDocs() {
 
     return matchesSearch && matchesMonth && matchesYear && matchesColumnFilters && matchesTab;
   });
+
+  // Sorting calculation
+  if (sortConfig.key !== null) {
+    filteredDocuments.sort((a, b) => {
+      let aVal = a[sortConfig.key];
+      let bVal = b[sortConfig.key];
+
+      // Custom comparisons
+      if (sortConfig.key === 'daysProcessed') {
+        aVal = a.daysProcessed !== null && a.daysProcessed !== undefined ? a.daysProcessed : a.calcnetworkdays;
+        bVal = b.daysProcessed !== null && b.daysProcessed !== undefined ? b.daysProcessed : b.calcnetworkdays;
+      }
+
+      if (aVal === null || aVal === undefined || aVal === '-') return 1;
+      if (bVal === null || bVal === undefined || bVal === '-') return -1;
+
+      if (typeof aVal === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      } else {
+        return sortConfig.direction === 'asc'
+          ? aVal - bVal
+          : bVal - aVal;
+      }
+    });
+  }
 
   const indexOfLastRow = currentPage * rowsPerPage;
   const indexOfFirstRow = indexOfLastRow - rowsPerPage;
@@ -638,7 +746,9 @@ function AllDocs() {
           doc.dateReceive || '-',
           doc.daysProcessed !== null && doc.daysProcessed !== undefined
             ? Number(doc.daysProcessed)
-            : '-',
+            : (doc.calcnetworkdays !== null && doc.calcnetworkdays !== undefined
+               ? Number(doc.calcnetworkdays)
+               : '-'),
           doc.time?.replace('_', ' ').toUpperCase() || '-',
           doc.dtsNo,
           doc.seriesNo || '-',
@@ -650,7 +760,7 @@ function AllDocs() {
           doc.documentDirection.toLowerCase() === 'incoming' ? '-' : (doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : '-'),
           doc.particulars || '-',
           doc.route?.replace(/_/g, ' ') || '-',
-          doc.remarks || '-',
+          doc.remarks && doc.remarks !== '-' ? doc.remarks : (doc.networkdaysremarks && doc.networkdaysremarks !== '-' ? doc.networkdaysremarks : '-'),
         ];
         const row = worksheet.addRow(rowValues);
 
@@ -833,6 +943,29 @@ function AllDocs() {
       </div>
     );
 
+  const renderSortIcon = (key) => {
+    if (sortConfig.key !== key) {
+      return <span className="opacity-30 ml-1 text-[10px] select-none">⇅</span>;
+    }
+    return sortConfig.direction === 'asc' 
+      ? <FiArrowUp className="inline w-3 h-3 ml-1 text-[#0b4c95]" />
+      : <FiArrowDown className="inline w-3 h-3 ml-1 text-[#0b4c95]" />;
+  };
+
+  const uniqueValues = {
+    dateSent: [...new Set(documents.map((d) => formatDateOnly(d.dateSent)))].filter((v) => v !== '-').sort((a, b) => new Date(a) - new Date(b)),
+    direction: [...new Set(documents.map((d) => d.documentDirection))].filter(Boolean).sort(),
+    payee: [...new Set(documents.map((d) => d.payee))].filter((v) => v && v !== '-').sort(),
+    docType: [...new Set(documents.map((d) => d.documentType))].filter(Boolean).sort(),
+    timeReceived: [...new Set(documents.map((d) => d.time))].filter((v) => v && v !== '-').sort(),
+    dateReleased: [...new Set(documents.map((d) => formatDateOnly(d.dateReceive)))].filter((v) => v !== '-').sort(),
+    route: [...new Set(documents.map((d) => d.route))].filter((v) => v && v !== '-').sort(),
+    processedBy: [...new Set(documents.map((d) => d.processedBy))].filter((v) => v && v !== '-').sort(),
+  };
+
+  const selectFilterClass =
+    'text-[11px] p-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:border-sky-500 cursor-pointer w-full';
+
   const validProcessingDays = filteredDocuments
     .map(doc => doc.daysProcessed)
     .filter(days => days !== null && !isNaN(days) && days > 0);
@@ -882,19 +1015,26 @@ function AllDocs() {
       </div>
  
       <div className="flex border-b border-slate-200">
-        {['All Records', 'Incoming', 'Outgoing', 'Processed Documents', 'Archived Documents'].map((tab) => {
+        {['All Records', 'Incoming', 'Processed Documents', 'Archived Documents'].map((tab) => {
           const tabValue = tab === 'All Records' ? 'All' : tab;
+          const count = documents.filter(doc => doc.documentDirection?.toLowerCase() === 'incoming').length;
+          
           return (
             <button
               key={tab}
               onClick={() => setActiveTab(tabValue)}
-              className={`px-6 py-2.5 text-xs font-bold transition-all duration-200 border-b-2 cursor-pointer ${
+              className={`px-6 py-2.5 text-xs font-bold transition-all duration-200 border-b-2 cursor-pointer flex items-center gap-1.5 ${
                 activeTab === tabValue
                   ? 'border-[#0b4c95] text-[#0b4c95] bg-sky-500/5'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}
             >
-              {tab}
+              <span>{tab}</span>
+              {tab === 'Incoming' && count > 0 && (
+                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-extrabold leading-none text-white bg-[#0b4c95] rounded-full min-w-[16px] h-4">
+                  {count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -972,7 +1112,7 @@ function AllDocs() {
                 <DropdownMenu
                   items={years.map(String)}
                   onSelect={(year) => {
-                    setSelectedYear(Number(year));
+                    setSelectedYear(year === 'All' ? 'All' : Number(year));
                     setShowYearDropdown(false);
                   }}
                   isOpen={showYearDropdown}
@@ -991,297 +1131,261 @@ function AllDocs() {
             </div>
           </div>
 
+          {/* Horizontal Column Filters Panel */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 flex flex-wrap items-center gap-4 shadow-3xs mt-4">
+            <div className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mr-1">Filters:</div>
+
+            {/* Date Sent/Received */}
+            <div className="flex flex-col gap-1 w-32">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                {adminDirection === 'incoming' ? 'Date Sent' : 'Date Received'}
+              </span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.dateSent}
+                onChange={(e) => setColumnFilters({ ...columnFilters, dateSent: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.dateSent.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Direction */}
+            {activeTab === 'All' && (
+              <div className="flex flex-col gap-1 w-28">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Direction</span>
+                <select
+                  className={selectFilterClass}
+                  value={columnFilters.direction}
+                  onChange={(e) => setColumnFilters({ ...columnFilters, direction: e.target.value })}
+                >
+                  <option value="">All</option>
+                  {uniqueValues.direction.map((val, i) => (
+                    <option key={i} value={val}>{val}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Payee */}
+            <div className="flex flex-col gap-1 w-36">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Payee</span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.payee}
+                onChange={(e) => setColumnFilters({ ...columnFilters, payee: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.payee.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Document Type */}
+            <div className="flex flex-col gap-1 w-40">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Document Type</span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.docType}
+                onChange={(e) => setColumnFilters({ ...columnFilters, docType: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.docType.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Time Received */}
+            <div className="flex flex-col gap-1 w-28">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Time Received</span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.timeReceived}
+                onChange={(e) => setColumnFilters({ ...columnFilters, timeReceived: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.timeReceived.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date Released */}
+            <div className="flex flex-col gap-1 w-32">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date Released</span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.dateReleased}
+                onChange={(e) => setColumnFilters({ ...columnFilters, dateReleased: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.dateReleased.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Routed To */}
+            <div className="flex flex-col gap-1 w-32">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Routed To</span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.route}
+                onChange={(e) => setColumnFilters({ ...columnFilters, route: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.route.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Processed By */}
+            <div className="flex flex-col gap-1 w-36">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Processed By</span>
+              <select
+                className={selectFilterClass}
+                value={columnFilters.processedBy}
+                onChange={(e) => setColumnFilters({ ...columnFilters, processedBy: e.target.value })}
+              >
+                <option value="">All</option>
+                {uniqueValues.processedBy.map((val, i) => (
+                  <option key={i} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset Button */}
+            {Object.keys(columnFilters).some((key) => columnFilters[key] !== '') && (
+              <button
+                onClick={() =>
+                  setColumnFilters({
+                    dateSent: '',
+                    dtsNo: '',
+                    direction: '',
+                    docType: '',
+                    timeReceived: '',
+                    dateReleased: '',
+                    daysProcessed: '',
+                    route: '',
+                    processedBy: '',
+                    payee: '',
+                    seriesNo: '',
+                    remarks: '',
+                  })
+                }
+                className="ml-auto text-xs font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
+            )}
+          </div>
+
           {/* Main Table Container */}
-        <div className="table-container-premium shadow-2xs">
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin">
-            <table className="table-premium w-full text-left border-collapse relative">
-              <thead>
-                {(() => {
-                  const uniqueValues = {
-                    dateSent: [
-                      ...new Set(documents.map((d) => formatDateOnly(d.dateSent))),
-                    ]
-                      .filter((v) => v !== '-')
-                      .sort((a, b) => new Date(a) - new Date(b)),
-                    dtsNo: [...new Set(documents.map((d) => d.dtsNo))]
-                      .filter(Boolean)
-                      .sort(),
-                    direction: [
-                      ...new Set(documents.map((d) => d.documentDirection)),
-                    ]
-                      .filter(Boolean)
-                      .sort(),
-                    docType: [...new Set(documents.map((d) => d.documentType))]
-                      .filter(Boolean)
-                      .sort(),
-                    timeReceived: [...new Set(documents.map((d) => d.time))]
-                      .filter((v) => v && v !== '-')
-                      .sort(),
-                    dateReleased: [
-                      ...new Set(
-                        documents.map((d) => formatDateOnly(d.dateReceive)),
-                      ),
-                    ]
-                      .filter((v) => v !== '-')
-                      .sort(),
-                    daysProcessed: [
-                      ...new Set(
-                        documents.map((d) =>
-                          d.daysProcessed !== null && d.daysProcessed !== undefined ? String(d.daysProcessed) : '-',
-                        ),
-                      ),
-                    ]
-                      .filter((v) => v !== '-')
-                      .sort((a, b) => Number(a) - Number(b)),
-                    route: [...new Set(documents.map((d) => d.route))]
-                      .filter((v) => v && v !== '-')
-                      .sort(),
-                    remarks: [...new Set(documents.map((d) => d.remarks))]
-                      .filter((v) => v && v !== '-')
-                      .sort(),
-                    processedBy: [...new Set(documents.map((d) => d.processedBy))]
-                      .filter((v) => v && v !== '-')
-                      .sort(),
-                    payee: [...new Set(documents.map((d) => d.payee))]
-                      .filter((v) => v && v !== '-')
-                      .sort(),
-                  };
-
-                  const selectClass =
-                    'text-[10px] w-full p-1.5 border border-slate-200/80 rounded shadow-2xs font-normal text-slate-600 focus:outline-none focus:border-sky-500 bg-white cursor-pointer';
-
-                  return (
-                    <tr>
-                      <th className="w-[11%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>
-                            {adminDirection === 'incoming'
-                              ? 'Date Sent'
-                              : 'Date Received'}
-                          </span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.dateSent}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                dateSent: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.dateSent.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[10%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>DTS No.</span>
-                          <div className="h-[28px]" />
-                        </div>
-                      </th>
-                      <th className="w-[10%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Series No.</span>
-                          <div className="h-[28px]" />
-                        </div>
-                      </th>
-                      <th className="w-[10%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Queue No.</span>
-                          <div className="h-[28px]" />
-                        </div>
-                      </th>
-                      <th className="w-[9%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Direction</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.direction}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                direction: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.direction.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[11%] align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Payee</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.payee}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                payee: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.payee.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[14%] align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Document Type</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.docType}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                docType: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.docType.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[10%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Time Received</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.timeReceived}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                timeReceived: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.timeReceived.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[11%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Date Released</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.dateReleased}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                dateReleased: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.dateReleased.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[11%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Days Processed</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.daysProcessed}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                daysProcessed: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.daysProcessed.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[11%] align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Routed To</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.route}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                route: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.route.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[11%] align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Processed By</span>
-                          <select
-                            className={selectClass}
-                            value={columnFilters.processedBy}
-                            onChange={(e) =>
-                              setColumnFilters({
-                                ...columnFilters,
-                                processedBy: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueValues.processedBy.map((val, i) => (
-                              <option key={i} value={val}>
-                                {val}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </th>
-                      <th className="w-[10%] text-center align-top pt-3">
-                        <div className="flex flex-col gap-2">
-                          <span>Actions</span>
-                          <div className="h-[26px]"></div>
-                        </div>
-                      </th>
-                    </tr>
-                  );
-                })()}
-              </thead>
+          <div className="table-container-premium shadow-2xs">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin">
+              <table className="table-premium w-full text-left border-collapse relative">
+                <thead>
+                  <tr>
+                    <th
+                      className="w-[11%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('dateSent')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{adminDirection === 'incoming' ? 'Date Sent' : 'Date Received'}</span>
+                        {renderSortIcon('dateSent')}
+                      </div>
+                    </th>
+                    <th className="w-[10%] text-center py-3 select-none">
+                      <span>DTS No.</span>
+                    </th>
+                    <th className="w-[10%] text-center py-3 select-none">
+                      <span>Series No.</span>
+                    </th>
+                    <th className="w-[10%] text-center py-3 select-none">
+                      <span>Queue No.</span>
+                    </th>
+                    <th
+                      className="w-[9%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('documentDirection')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>Direction</span>
+                        {renderSortIcon('documentDirection')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[11%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('payee')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Payee</span>
+                        {renderSortIcon('payee')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[14%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('documentType')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Document Type</span>
+                        {renderSortIcon('documentType')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[10%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('time')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>Time Received</span>
+                        {renderSortIcon('time')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[11%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('dateReceive')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>Date Released</span>
+                        {renderSortIcon('dateReceive')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[11%] text-center py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('daysProcessed')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>Days Processed</span>
+                        {renderSortIcon('daysProcessed')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[11%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('route')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Routed To</span>
+                        {renderSortIcon('route')}
+                      </div>
+                    </th>
+                    <th
+                      className="w-[11%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      onClick={() => requestSort('processedBy')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Processed By</span>
+                        {renderSortIcon('processedBy')}
+                      </div>
+                    </th>
+                    <th className="w-[10%] text-center py-3 select-none">
+                      <span>Actions</span>
+                    </th>
+                  </tr>
+                </thead>
               <tbody>
                 {loading ? (
                   <tr>
@@ -1337,7 +1441,13 @@ function AllDocs() {
                       updatingTimeId === doc.id ||
                       doc.archiveStatus ||
                       !(
-                        adminDirection === 'outgoing' ||
+                        adminDirection === 'all' ||
+                        (adminDirection === 'incoming' &&
+                          (doc.documentDirection?.toLowerCase() === 'incoming' ||
+                            doc.dateReceive === '-' ||
+                            !doc.dateReceive)) ||
+                        (doc.documentDirection?.toLowerCase() === 'outgoing' &&
+                          adminDirection === 'outgoing') ||
                         adminUserType === 'superadmin'
                       );
 
@@ -1442,10 +1552,53 @@ function AllDocs() {
                         <td className="text-center font-semibold text-slate-600 text-xs">
                           {doc.daysProcessed !== null && doc.daysProcessed !== undefined
                             ? Number(doc.daysProcessed).toFixed(1)
-                            : '-'}
+                            : (doc.calcnetworkdays !== null && doc.calcnetworkdays !== undefined
+                               ? Number(doc.calcnetworkdays).toFixed(1)
+                               : '-')}
                         </td>
-                        <td className="font-semibold text-slate-700 text-xs max-w-[120px] truncate">
-                          {doc.route?.replace(/_/g, ' ') || '-'}
+                        <td className="text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <select
+                              value={doc.route === '-' ? '' : doc.route}
+                              onChange={(e) =>
+                                handleRouteUpdate(doc.id, e.target.value)
+                              }
+                              disabled={isTimeSelectDisabled || updatingRouteId === doc.id}
+                              className={`h-8 w-32 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 px-2 outline-none transition-all duration-200 focus:border-[#0b4c95] focus:ring-2 focus:ring-sky-500/10 ${
+                                isTimeSelectDisabled || updatingRouteId === doc.id
+                                  ? 'bg-slate-50/50 text-slate-400 cursor-not-allowed border-slate-100'
+                                  : 'cursor-pointer hover:border-slate-300'
+                              }`}
+                            >
+                              <option value="">-</option>
+                              {routes.map((r) => (
+                                <option key={r.routeid} value={r.routename}>
+                                  {r.routename}
+                                </option>
+                              ))}
+                            </select>
+                            {updatingRouteId === doc.id && (
+                              <svg
+                                className="animate-spin h-3.5 w-3.5 text-sky-700"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                ></circle>
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8v8z"
+                                ></path>
+                              </svg>
+                            )}
+                          </div>
                         </td>
                         <td className="font-semibold text-slate-700 text-xs max-w-[120px] truncate">
                           {doc.processedBy || '-'}

@@ -12,10 +12,11 @@ function OverlayIncoming({
 }) {
   const popupRef = useRef(null);
   const [documentTypes, setDocumentTypes] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [showCustomDocType, setShowCustomDocType] = useState(false);
   const [customDocType, setCustomDocType] = useState('');
   const [selectedDocType, setSelectedDocType] = useState('');
-  const [formData, setFormData] = useState({ dtsNo: '', seriesNo: '', particulars: '', queueNo: '', processedBy: '' });
+  const [formData, setFormData] = useState({ dtsNo: '', seriesNo: '', particulars: '', queueNo: '', processedBy: '', time: '', route: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [auditTrail, setAuditTrail] = useState([]);
@@ -33,6 +34,8 @@ function OverlayIncoming({
         particulars: editingDoc.particulars || '',
         queueNo: editingDoc.queueNo || editingDoc.queueno || '',
         processedBy: editingDoc.processedby || editingDoc.processedBy || '-',
+        time: editingDoc.time && editingDoc.time !== '-' ? editingDoc.time : '',
+        route: editingDoc.route && editingDoc.route !== '-' ? editingDoc.route : '',
       });
       // Apply case-insensitive lookup if documentTypes is already loaded
       const matched = documentTypes.find(
@@ -41,7 +44,7 @@ function OverlayIncoming({
       setSelectedDocType(matched ? matched.documenttype : (editingDoc.documenttype || ''));
       setShowCustomDocType(false);
     } else {
-      setFormData({ dtsNo: '', seriesNo: '', particulars: '', queueNo: '', processedBy: '' });
+      setFormData({ dtsNo: '', seriesNo: '', particulars: '', queueNo: '', processedBy: '', time: '', route: '' });
       setSelectedDocType('');
       setShowCustomDocType(false);
       setErrors({});
@@ -68,6 +71,20 @@ function OverlayIncoming({
     };
     if (isOpen) fetchDocumentTypes();
   }, [isOpen, API_URL, editingDoc]);
+
+  // Fetch routes when overlay opens
+  useEffect(() => {
+    const fetchRoutes = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/routes`);
+        const data = await response.json();
+        setRoutes(data);
+      } catch (err) {
+        console.error('Error fetching routes:', err);
+      }
+    };
+    if (isOpen) fetchRoutes();
+  }, [isOpen, API_URL]);
 
   // Fetch audit trail whenever the editing document changes
   useEffect(() => {
@@ -139,6 +156,16 @@ function OverlayIncoming({
   const handleQueueNoChange = (e) => {
     if (viewMode) return;
     setFormData({ ...formData, queueNo: e.target.value });
+  };
+
+  const handleTimeChange = (e) => {
+    if (viewMode) return;
+    setFormData({ ...formData, time: e.target.value });
+  };
+
+  const handleRouteChange = (e) => {
+    if (viewMode) return;
+    setFormData({ ...formData, route: e.target.value });
   };
 
   const handleDocTypeChange = (e) => {
@@ -291,6 +318,8 @@ function OverlayIncoming({
         processedby: admin.adminname || null,
         payee: null,
         amount: null,
+        time: formData.time || null,
+        route: formData.route || null,
         ...(editingDoc
           ? {}
           : (() => {
@@ -368,7 +397,7 @@ function OverlayIncoming({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Bar */}
-        <div className="modal-header-bar green px-6 py-5 flex items-start justify-between flex-shrink-0">
+        <div className="modal-header-bar blue px-6 py-5 flex items-start justify-between flex-shrink-0">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-0.5">
               Incoming Document
@@ -497,6 +526,42 @@ function OverlayIncoming({
                 )}
               </div>
 
+              {/* Time Received */}
+              <div className="modal-field">
+                <label className="modal-label">Time Received</label>
+                <select
+                  name="time"
+                  value={formData.time}
+                  onChange={handleTimeChange}
+                  className="modal-input modal-select"
+                  disabled={viewMode}
+                >
+                  <option value="">-</option>
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                  <option value="PM_Late">PM Late</option>
+                </select>
+              </div>
+
+              {/* Routed To */}
+              <div className="modal-field">
+                <label className="modal-label">Routed To</label>
+                <select
+                  name="route"
+                  value={formData.route}
+                  onChange={handleRouteChange}
+                  className="modal-input modal-select"
+                  disabled={viewMode}
+                >
+                  <option value="">Select Route</option>
+                  {routes.map((r) => (
+                    <option key={r.routeid} value={r.routename}>
+                      {r.routename}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Custom Document Type Input (col-span-2 if active) */}
               {showCustomDocType && !viewMode && (
                 <div className="md:col-span-2 p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
@@ -565,7 +630,7 @@ function OverlayIncoming({
                 </svg>
                 Audit Trail
                 {auditTrail.length > 0 && (
-                  <span className="text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-full">{auditTrail.length}</span>
+                  <span className="text-[10px] font-extrabold bg-[#0b4c95] text-white px-2 py-0.5 rounded-full">{auditTrail.length}</span>
                 )}
               </h3>
 
@@ -641,8 +706,8 @@ function OverlayIncoming({
             <button
               className="modal-submit-btn text-white"
               style={{
-                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                boxShadow: '0 4px 12px rgba(5,150,105,0.25)',
+                background: 'linear-gradient(135deg, #0b4c95 0%, #1460A2 100%)',
+                boxShadow: '0 4px 12px rgba(11,76,149,0.25)',
               }}
               onClick={handleSubmit}
               disabled={isSubmitting}

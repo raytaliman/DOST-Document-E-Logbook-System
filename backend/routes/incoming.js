@@ -16,7 +16,7 @@ module.exports = (app, io) => {
 
   // Add new incoming document
   app.post('/api/incoming', async (req, res) => {
-    const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno } = req.body;
+    const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
     if (!dtsno || !documenttype) {
       return res.status(400).json({ error: 'Required fields missing', required: ['dtsno', 'documenttype'] });
     }
@@ -34,8 +34,8 @@ module.exports = (app, io) => {
           'incoming',
           manilaTime,
           null,
-          null,
-          null,
+          time || null,
+          route || null,
           null,
           null,
           0,
@@ -60,7 +60,7 @@ module.exports = (app, io) => {
   // Update incoming document
   app.put('/api/incoming/:id', async (req, res) => {
     const { id } = req.params;
-    const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno } = req.body;
+    const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
     if (!dtsno || !documenttype) {
       return res.status(400).json({ error: 'Required fields missing', required: ['dtsno', 'documenttype'] });
     }
@@ -73,10 +73,24 @@ module.exports = (app, io) => {
       const updatedRecordRes = await pool.query(
         `UPDATE tbldocuments 
          SET dtsno = $1, documenttype = $2, processedby = COALESCE($3, processedby),
-             payee = $4, amount = $5, seriesno = $6, particulars = $7, queueno = $8
-         WHERE documentid = $9 
+             payee = $4, amount = $5, seriesno = $6, particulars = $7, queueno = $8,
+             time = $9, route = $10,
+             documentdirection = CASE WHEN $9 IS NOT NULL AND $9 <> '' AND $9 <> '-' THEN 'outgoing' ELSE 'incoming' END
+         WHERE documentid = $11 
          RETURNING *`,
-        [formattedDtsNo, documenttype.trim(), processedby?.trim() || null, payee?.trim() || null, amount ? parseFloat(amount) : null, seriesno?.trim() || null, particulars?.trim() || null, queueno?.trim() || null, parseInt(id)]
+        [
+          formattedDtsNo, 
+          documenttype.trim(), 
+          processedby?.trim() || null, 
+          payee?.trim() || null, 
+          amount ? parseFloat(amount) : null, 
+          seriesno?.trim() || null, 
+          particulars?.trim() || null, 
+          queueno?.trim() || null, 
+          time || null, 
+          route || null, 
+          parseInt(id)
+        ]
       );
       res.json(updatedRecordRes.rows[0]);
       io.emit('documents_updated');

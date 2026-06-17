@@ -152,12 +152,41 @@ module.exports = (app, io) => {
               await client.query('BEGIN');
               const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
               const oldDoc = oldRes.rows[0];
+              const directionValue = timeValue ? 'outgoing' : 'incoming';
               const result = await client.query(
-                'UPDATE tbldocuments SET time = $1 WHERE documentid = $2 RETURNING *',
-                [timeValue, parseInt(id)]
+                'UPDATE tbldocuments SET time = $1, documentdirection = $2 WHERE documentid = $3 RETURNING *',
+                [timeValue, directionValue, parseInt(id)]
               );
               const newDoc = result.rows[0];
-              const changes = diffFields(oldDoc, newDoc, ['time']);
+              const changes = diffFields(oldDoc, newDoc, ['time', 'documentdirection']);
+              if (changes) {
+                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
+              }
+              await client.query('COMMIT');
+              io.emit('documents_updated');
+              return res.json(newDoc);
+            } catch (err) {
+              await client.query('ROLLBACK');
+              throw err;
+            } finally {
+              client.release();
+            }
+        }
+
+        // Route-only quick edit
+        if (Object.keys(req.body).length === 1 && typeof route !== 'undefined') {
+            const routeValue = route === '' || route === '-' ? null : route;
+            const client = await pool.connect();
+            try {
+              await client.query('BEGIN');
+              const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+              const oldDoc = oldRes.rows[0];
+              const result = await client.query(
+                'UPDATE tbldocuments SET route = $1 WHERE documentid = $2 RETURNING *',
+                [routeValue, parseInt(id)]
+              );
+              const newDoc = result.rows[0];
+              const changes = diffFields(oldDoc, newDoc, ['route']);
               if (changes) {
                 await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
               }
