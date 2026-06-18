@@ -645,8 +645,11 @@ function OverlayOutgoing({
       }
 
       const result = await response.json();
-      onClose(true);
-      if (onSuccess) onSuccess();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        onClose();
+      }
       Swal.fire({
         icon: 'success',
         title: editingDoc ? 'Updated!' : 'Added!',

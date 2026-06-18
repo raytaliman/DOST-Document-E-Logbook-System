@@ -436,8 +436,11 @@ function OverlayIncoming({
       if (!response.ok)
         throw new Error(result.error || 'Failed to save record');
 
-      onClose(true);
-      if (onSuccess) onSuccess();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        onClose();
+      }
       Swal.fire({
         icon: 'success',
         title: editingDoc ? 'Updated!' : 'Added!',

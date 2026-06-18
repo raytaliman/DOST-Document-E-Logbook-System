@@ -808,8 +808,8 @@ function AllDocs() {
           doc.documentDirection.charAt(0).toUpperCase() +
             doc.documentDirection.slice(1),
           doc.documentType?.trim() || '-',
-          doc.documentDirection.toLowerCase() === 'incoming' ? '-' : (doc.payee || '-'),
-          doc.documentDirection.toLowerCase() === 'incoming' ? '-' : (doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : '-'),
+          doc.payee || '-',
+          doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : '-',
           doc.particulars || '-',
           doc.route?.replace(/_/g, ' ') || '-',
           doc.remarks && doc.remarks !== '-' ? doc.remarks : (doc.networkdaysremarks && doc.networkdaysremarks !== '-' ? doc.networkdaysremarks : '-'),
@@ -1537,20 +1537,16 @@ function AllDocs() {
                           </span>
                         </td>
                         <td className="text-left text-xs">
-                          {doc.documentDirection.toLowerCase() === 'incoming' ? (
-                            <span className="font-semibold text-slate-400">-</span>
-                          ) : (
-                            <div className="flex flex-col items-start">
-                              <span className="font-bold text-slate-800 max-w-[120px] truncate" title={doc.payee}>
-                                {doc.payee || '-'}
+                          <div className="flex flex-col items-start">
+                            <span className="font-bold text-slate-800 max-w-[120px] truncate" title={doc.payee}>
+                              {doc.payee || '-'}
+                            </span>
+                            {doc.amount !== null && doc.amount !== undefined ? (
+                              <span className="text-[10px] text-[#0b4c95] font-bold mt-0.5">
+                                {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(doc.amount)}
                               </span>
-                              {doc.amount !== null && doc.amount !== undefined ? (
-                                <span className="text-[10px] text-[#0b4c95] font-bold mt-0.5">
-                                  {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(doc.amount)}
-                                </span>
-                              ) : null}
-                            </div>
-                          )}
+                            ) : null}
+                          </div>
                         </td>
                         <td
                           className="font-semibold text-slate-700 text-xs max-w-[150px] truncate"
