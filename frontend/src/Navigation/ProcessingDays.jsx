@@ -997,6 +997,10 @@ function NetworkDays() {
             <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">Average Turnaround</span>
             <span className="text-sm font-extrabold text-sky-800 mt-0.5">{showedAverageDays} Days</span>
           </div>
+          <div className="bg-sky-50 border border-sky-100 rounded-xl px-4 py-2 flex flex-col justify-center items-center shadow-3xs">
+            <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">Processed</span>
+            <span className="text-sm font-extrabold text-sky-800 mt-0.5">{filteredDocuments.length} Documents</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

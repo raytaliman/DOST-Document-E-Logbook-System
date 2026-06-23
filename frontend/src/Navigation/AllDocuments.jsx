@@ -1170,8 +1170,6 @@ function AllDocs() {
       <div className="flex border-b border-slate-200">
         {['All Records', 'Incoming', 'Processed Documents', 'Archived Documents'].map((tab) => {
           const tabValue = tab === 'All Records' ? 'All' : tab;
-          const count = documents.filter(doc => doc.documentDirection?.toLowerCase() === 'incoming').length;
-          
           return (
             <button
               key={tab}
@@ -1183,11 +1181,6 @@ function AllDocs() {
               }`}
             >
               <span>{tab}</span>
-              {tab === 'Incoming' && count > 0 && (
-                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-extrabold leading-none text-white bg-[#0b4c95] rounded-full min-w-[16px] h-4">
-                  {count}
-                </span>
-              )}
             </button>
           );
         })}
@@ -1217,6 +1210,14 @@ function AllDocs() {
                     : 'Track all business turnaround times, calculate network days, and manage exceptions'}
                 </p>
               </div>
+              {activeTab === 'Incoming' && (
+                <div className="bg-sky-50 border border-sky-100 rounded-xl px-4 py-2 flex flex-col justify-center items-center shadow-3xs">
+                  <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">Incoming</span>
+                  <span className="text-sm font-extrabold text-sky-800 mt-0.5">
+                    {filteredDocuments.length} Documents
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
