@@ -38,7 +38,7 @@ const formatDate = (dateString) => {
     ) {
       return dateString;
     }
-    const m = moment(dateString);
+    const m = moment.utc(dateString);
     return m.isValid() ? m.format('MMMM D, YYYY [at] h:mm A') : '-';
   } catch (e) {
     return '-';
@@ -60,7 +60,7 @@ const formatDateOnly = (dateString) => {
         return match[1];
       }
     }
-    const m = moment(dateString);
+    const m = moment.utc(dateString);
     return m.isValid() ? m.format('MMMM D, YYYY') : '-';
   } catch (e) {
     return '-';
@@ -78,7 +78,7 @@ const formatTimeOnly = (dateString) => {
         return dateString.substring(atIndex + 4).trim();
       }
     }
-    const m = moment(dateString);
+    const m = moment.utc(dateString);
     return m.isValid() ? m.format('h:mm A') : '-';
   } catch (e) {
     return '-';
@@ -1348,7 +1348,7 @@ function AllDocs() {
                       onClick={() => requestSort('dateSent')}
                     >
                       <div className="flex items-center justify-center gap-1">
-                        <span>{adminDirection === 'incoming' ? 'Date Sent' : 'Date Received'}</span>
+                        <span>{adminDirection === 'incoming' ? 'Date Received' : 'Date Sent'}</span>
                         {renderSortIcon('dateSent')}
                       </div>
                     </th>
