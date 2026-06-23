@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import moment from 'moment';
+import { io } from 'socket.io-client';
 import {
   FiPlus,
   FiTrash2,
@@ -137,6 +138,26 @@ function Configuration() {
     fetchDocTypes();
   }, [fetchHolidays, fetchSettings, fetchPayees, fetchRoutes, fetchDocTypes]);
 
+  useEffect(() => {
+    const socket = io(API_URL);
+    socket.on('recalc_progress', ({ current, total }) => {
+      if (Swal.isVisible()) {
+        if (total > 0) {
+          Swal.update({
+            html: `<div className="text-center space-y-2">
+              <p className="font-bold text-[#0b4c95] text-sm animate-pulse">Recalculating processed days...</p>
+              <p className="text-xs font-semibold text-slate-500">Updating records ${current} of ${total}</p>
+            </div>`,
+            showConfirmButton: false
+          });
+        }
+      }
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [API_URL]);
+
   const handleAddHoliday = async (e) => {
     if (e) e.preventDefault();
     const description = newHoliday.description.trim();
@@ -144,7 +165,7 @@ function Configuration() {
       Swal.fire({
         icon: 'warning',
         title: 'Missing Fields',
-        text: 'Please provide both a date and a holiday name.',
+        text: 'Please provide both a date and a description.',
         customClass: { popup: 'swal2-minimalist' },
       });
       return;
@@ -155,6 +176,22 @@ function Configuration() {
       ? `${API_URL}/api/holidays/${editingHoliday.holidayid}`
       : `${API_URL}/api/holidays`;
     const method = isEdit ? 'PUT' : 'POST';
+
+    // Show initial loading Swal
+    Swal.fire({
+      title: isEdit ? 'Updating Non-Office Day...' : 'Saving Non-Office Day...',
+      html: `<div className="text-center space-y-2">
+        <p className="font-bold text-[#0b4c95] text-sm animate-pulse">Calculating affected documents...</p>
+        <p className="text-xs font-semibold text-slate-400">Please wait...</p>
+      </div>`,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+      customClass: { popup: 'swal2-minimalist' },
+    });
 
     try {
       const res = await fetch(url, {
@@ -171,14 +208,14 @@ function Configuration() {
         fetchHolidays();
         Swal.fire({
           icon: 'success',
-          title: isEdit ? 'Holiday Updated!' : 'Holiday Added!',
+          title: isEdit ? 'Non-Office Day Updated!' : 'Non-Office Day Added!',
           timer: 1500,
           showConfirmButton: false,
           customClass: { popup: 'swal2-minimalist' },
         });
       } else {
         const errData = await res.json();
-        throw new Error(errData.error || 'Failed to save holiday');
+        throw new Error(errData.error || 'Failed to save non-office day');
       }
     } catch (err) {
       console.error(err);
@@ -199,7 +236,7 @@ function Configuration() {
     }
 
     const result = await Swal.fire({
-      title: 'Remove Holiday?',
+      title: 'Remove Non-Office Day?',
       text: 'This date will no longer be excluded from calculations.',
       icon: 'warning',
       showCancelButton: true,
@@ -210,13 +247,47 @@ function Configuration() {
     });
 
     if (result.isConfirmed) {
+      // Show initial loading Swal
+      Swal.fire({
+        title: 'Removing Non-Office Day...',
+        html: `<div className="text-center space-y-2">
+          <p className="font-bold text-[#0b4c95] text-sm animate-pulse">Calculating affected documents...</p>
+          <p className="text-xs font-semibold text-slate-400">Please wait...</p>
+        </div>`,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+        customClass: { popup: 'swal2-minimalist' },
+      });
+
       try {
         const res = await fetch(`${API_URL}/api/holidays/${id}`, {
           method: 'DELETE',
         });
-        if (res.ok) fetchHolidays();
+        if (res.ok) {
+          fetchHolidays();
+          Swal.fire({
+            icon: 'success',
+            title: 'Non-Office Day Removed!',
+            timer: 1500,
+            showConfirmButton: false,
+            customClass: { popup: 'swal2-minimalist' },
+          });
+        } else {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to delete non-office day');
+        }
       } catch (err) {
         console.error(err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: err.message,
+          customClass: { popup: 'swal2-minimalist' },
+        });
       }
     }
   };
@@ -590,7 +661,7 @@ function Configuration() {
             }`}
           >
             <FiCalendar className="w-4 h-4" />
-            Holidays
+            Non-Office Days
           </button>
 
           <button
@@ -651,7 +722,7 @@ function Configuration() {
                 <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
                   <FiCalendar className="w-4 h-4 text-[#0b4c95]" />
                   <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    {editingHoliday ? 'Edit Holiday' : 'Add Holiday'}
+                    {editingHoliday ? 'Edit Non-Office Day' : 'Add Non-Office Day'}
                   </h3>
                 </div>
                 <form onSubmit={handleAddHoliday} className="p-6 space-y-4">
@@ -671,11 +742,11 @@ function Configuration() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                      Holiday Name
+                      Non-Office Day Name / Description
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Christmas Day"
+                      placeholder="e.g. Christmas Day or Special Non-Working Day"
                       className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-[#0b4c95] focus:ring-4 focus:ring-sky-500/5 outline-none transition-all"
                       value={newHoliday.description}
                       onChange={(e) =>
@@ -700,7 +771,7 @@ function Configuration() {
                       className="w-full h-12 btn-dost-blue text-white font-bold text-xs rounded-xl shadow-md shadow-sky-900/10 flex items-center justify-center gap-2 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
                     >
                       <FiPlus className="w-5 h-5" />
-                      <span>{editingHoliday ? 'Update Holiday' : 'Save Holiday'}</span>
+                      <span>{editingHoliday ? 'Update Non-Office Day' : 'Save Non-Office Day'}</span>
                     </button>
                     {editingHoliday && (
                       <button
@@ -726,7 +797,7 @@ function Configuration() {
                   <thead>
                     <tr>
                       <th className="px-6 py-3 text-xs font-bold text-slate-700">Effective Date</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-700">Holiday Description</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-700">Description</th>
                       <th className="px-6 py-3 text-center text-xs font-bold text-slate-700">Action</th>
                     </tr>
                   </thead>
@@ -763,14 +834,14 @@ function Configuration() {
                                   description: h.holidayname,
                                 });
                               }}
-                              title="Edit Holiday"
+                              title="Edit Non-Office Day"
                               className="p-1.5 text-[#0b4c95] hover:bg-sky-50 rounded-lg transition-colors cursor-pointer mr-1"
                             >
                               <FiEdit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleDeleteHoliday(h.holidayid)}
-                              title="Delete Holiday"
+                              title="Delete Non-Office Day"
                               className="p-1.5 text-rose-400 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             >
                               <FiTrash2 className="w-3.5 h-3.5" />
@@ -784,7 +855,7 @@ function Configuration() {
                           colSpan="3"
                           className="text-center py-10 text-slate-400 text-xs font-medium italic"
                         >
-                          No scheduled holidays found
+                          No scheduled non-office days found
                         </td>
                       </tr>
                     )}
@@ -796,7 +867,7 @@ function Configuration() {
               {holidays.length > 0 && (
                 <div className="flex items-center justify-between px-2 py-1 text-[11px]">
                   <div className="text-slate-400 font-medium">
-                    Showing {((holidayPage - 1) * holidayRowsPerPage) + 1} to {Math.min(holidayPage * holidayRowsPerPage, holidays.length)} of {holidays.length} holidays
+                    Showing {((holidayPage - 1) * holidayRowsPerPage) + 1} to {Math.min(holidayPage * holidayRowsPerPage, holidays.length)} of {holidays.length} non-office days
                   </div>
                   <div className="flex items-center gap-3">
                     <select

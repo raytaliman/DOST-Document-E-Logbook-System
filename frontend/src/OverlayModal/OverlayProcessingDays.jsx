@@ -371,7 +371,7 @@ function OverlayProcessingDays({
                 
                 <div className="flex flex-col py-0.5 border-b border-dashed border-slate-100 pb-1.5">
                   <div className="flex justify-between items-start">
-                    <span>Holidays Deducted</span>
+                    <span>Non-Office Days Deducted</span>
                     <span className="font-bold text-slate-700">{breakdown.holidays.length} {breakdown.holidays.length === 1 ? 'day' : 'days'}</span>
                   </div>
                   {breakdown.holidays.length > 0 && (
