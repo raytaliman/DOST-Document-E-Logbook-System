@@ -1,10 +1,124 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import OverlayProcessingDays from '../OverlayModal/OverlayProcessingDays';
 import Swal from 'sweetalert2'; 
 import { io } from 'socket.io-client';
 import moment from 'moment';
 import { FiEdit2, FiSlash, FiSearch, FiChevronDown, FiDownload, FiChevronLeft, FiChevronRight, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import '../index.css';
+
+const formatRemarks = (remarksStr) => {
+  if (!remarksStr || remarksStr === '-') return '-';
+  if (remarksStr.trim().startsWith('[')) {
+    try {
+      const parsed = JSON.parse(remarksStr);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => `${item.remarks} (${item.days} ${item.days === 1 ? 'day' : 'days'})`).join(', ');
+      }
+    } catch (e) {
+      // Fallback
+    }
+  }
+  return remarksStr;
+};
+
+function MultiSelectDropdown({ label, options, selected, onChange, widthClass = 'w-48' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleToggle = (option) => {
+    if (selected.includes(option)) {
+      onChange(selected.filter(item => item !== option));
+    } else {
+      onChange([...selected, option]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selected.length === options.length) {
+      onChange([]);
+    } else {
+      onChange(options);
+    }
+  };
+
+  const filteredOptions = options.filter(opt => 
+    String(opt).toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const displayText = selected.length === 0 
+    ? 'All' 
+    : selected.length === options.length 
+      ? 'All Selected' 
+      : `${selected.length} Selected`;
+
+  return (
+    <div className={`flex flex-col gap-1 ${widthClass}`} ref={dropdownRef}>
+      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full h-8 px-2.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-[10px] font-bold text-slate-700 flex items-center justify-between outline-none transition-all duration-200 cursor-pointer"
+        >
+          <span className="truncate pr-1">{displayText}</span>
+          <FiChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isOpen && (
+          <div className="absolute left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 flex flex-col gap-1.5 max-h-[300px]">
+            {options.length > 5 && (
+              <input
+                type="text"
+                placeholder="Search..."
+                className="w-full h-7 px-2 border border-slate-100 rounded-md text-[10px] outline-none focus:border-sky-500 font-medium"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            )}
+            
+            <div className="overflow-y-auto max-h-[200px] flex flex-col gap-1 scrollbar-thin">
+              <label className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-50 cursor-pointer select-none text-[10px] font-extrabold text-slate-600 border-b border-slate-50 pb-1.5 mb-0.5">
+                <input
+                  type="checkbox"
+                  checked={selected.length === options.length}
+                  onChange={handleSelectAll}
+                  className="rounded border-slate-300 text-sky-600 focus:ring-sky-500/10 cursor-pointer w-3.5 h-3.5"
+                />
+                <span>Select All</span>
+              </label>
+
+              {filteredOptions.map((opt, idx) => (
+                <label key={idx} className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-50 cursor-pointer select-none text-[10px] text-slate-600 font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(opt)}
+                    onChange={() => handleToggle(opt)}
+                    className="rounded border-slate-300 text-sky-600 focus:ring-sky-500/10 cursor-pointer w-3.5 h-3.5"
+                  />
+                  <span className="truncate">{opt}</span>
+                </label>
+              ))}
+              {filteredOptions.length === 0 && (
+                <span className="text-[10px] text-slate-400 font-semibold text-center py-2">No options found</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function calculateNetworkDays(startDate, endDate, holidaysList = [], includeFriday = true) {
   if (!startDate || !endDate || endDate === '-') return 0;
@@ -148,16 +262,16 @@ function NetworkDays() {
   };
 
   const [columnFilters, setColumnFilters] = useState({
-    dateSent: '',
+    dateSent: [],
     dtsNo: '',
-    direction: '',
-    docType: '',
-    timeReceived: '',
-    dateReleased: '',
+    direction: [],
+    docType: [],
+    timeReceived: [],
+    dateReleased: [],
     daysProcessed: '',
-    route: '',
-    processedBy: '',
-    payee: '',
+    route: [],
+    processedBy: [],
+    payee: [],
     seriesNo: '',
     remarks: '',
   });
@@ -434,12 +548,8 @@ function NetworkDays() {
     }
 
     const matchesColumnFilters =
-      (columnFilters.dateSent === '' ||
-        (doc.dateSent
-          ? String(formatDateOnly(doc.dateSent))
-              .toLowerCase()
-              .includes(columnFilters.dateSent.toLowerCase())
-          : false)) &&
+      (columnFilters.dateSent.length === 0 ||
+        (doc.dateSent && columnFilters.dateSent.includes(formatDateOnly(doc.dateSent)))) &&
       (columnFilters.dtsNo === '' ||
         (doc.dtsNo || '')
           .toLowerCase()
@@ -448,40 +558,28 @@ function NetworkDays() {
         (doc.seriesNo || '')
           .toLowerCase()
           .includes(columnFilters.seriesNo.toLowerCase())) &&
-      (columnFilters.direction === '' ||
-        (doc.documentDirection || '')
-          .toLowerCase()
-          .includes(columnFilters.direction.toLowerCase())) &&
-      (columnFilters.docType === '' ||
-        (docType || '').includes(columnFilters.docType.toLowerCase())) &&
-      (columnFilters.timeReceived === '' ||
-        (time || '').includes(columnFilters.timeReceived.toLowerCase())) &&
-      (columnFilters.dateReleased === '' ||
-        (doc.dateReceive
-          ? String(formatDateOnly(doc.dateReceive))
-              .toLowerCase()
-              .includes(columnFilters.dateReleased.toLowerCase())
-          : false) ||
-        (doc.dateReceive === '-' && columnFilters.dateReleased === '-')) &&
+      (columnFilters.direction.length === 0 ||
+        columnFilters.direction.includes(doc.documentDirection)) &&
+      (columnFilters.docType.length === 0 ||
+        columnFilters.docType.includes(doc.documentType)) &&
+      (columnFilters.dateReleased.length === 0 ||
+        (doc.dateReceive && columnFilters.dateReleased.includes(formatDateOnly(doc.dateReceive))) ||
+        (doc.dateReceive === '-' && columnFilters.dateReleased.includes('-'))) &&
       (columnFilters.daysProcessed === '' ||
         (doc.daysProcessed !== null && doc.daysProcessed !== undefined
           ? String(doc.daysProcessed) === columnFilters.daysProcessed
           : false) ||
         (doc.daysProcessed === null && columnFilters.daysProcessed === '-')) &&
-      (columnFilters.route === '' ||
-        (route || '').includes(columnFilters.route.toLowerCase())) &&
+      (columnFilters.route.length === 0 ||
+        columnFilters.route.includes(doc.route)) &&
       (columnFilters.remarks === '' ||
-        (doc.networkdaysremarks || '')
+        (formatRemarks(doc.networkdaysremarks) || '')
           .toLowerCase()
           .includes(columnFilters.remarks.toLowerCase())) &&
-      (columnFilters.processedBy === '' ||
-        (doc.processedBy || '')
-          .toLowerCase()
-          .includes(columnFilters.processedBy.toLowerCase())) &&
-      (columnFilters.payee === '' ||
-        (doc.payee || '')
-          .toLowerCase()
-          .includes(columnFilters.payee.toLowerCase()));
+      (columnFilters.processedBy.length === 0 ||
+        columnFilters.processedBy.includes(doc.processedBy)) &&
+      (columnFilters.payee.length === 0 ||
+        columnFilters.payee.includes(doc.payee));
 
     return matchesSearch && matchesMonth && matchesYear && matchesColumnFilters;
   });
@@ -637,7 +735,7 @@ function NetworkDays() {
           doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : '-',
           doc.particulars || '-',
           doc.route?.replace(/_/g, ' ') || '-',
-          doc.networkdaysremarks && doc.networkdaysremarks !== '-' ? doc.networkdaysremarks : '-',
+          doc.networkdaysremarks && doc.networkdaysremarks !== '-' ? formatRemarks(doc.networkdaysremarks) : '-',
         ];
         const row = worksheet.addRow(rowValues);
 
@@ -971,127 +1069,85 @@ function NetworkDays() {
         <div className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mr-1">Filters:</div>
 
         {/* Date Sent/Received */}
-        <div className="flex flex-col gap-1 w-32">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-            {admin?.documentdirection === 'incoming' ? 'Date Received' : 'Date Sent'}
-          </span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.dateSent}
-            onChange={(e) => setColumnFilters({ ...columnFilters, dateSent: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.dateSent.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label={admin?.documentdirection === 'incoming' ? 'Date Received' : 'Date Sent'}
+          options={uniqueValues.dateSent}
+          selected={columnFilters.dateSent}
+          onChange={(val) => setColumnFilters({ ...columnFilters, dateSent: val })}
+          widthClass="w-36"
+        />
 
         {/* Direction */}
-        <div className="flex flex-col gap-1 w-28">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Direction</span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.direction}
-            onChange={(e) => setColumnFilters({ ...columnFilters, direction: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.direction.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Direction"
+          options={uniqueValues.direction}
+          selected={columnFilters.direction}
+          onChange={(val) => setColumnFilters({ ...columnFilters, direction: val })}
+          widthClass="w-28"
+        />
 
         {/* Payee */}
-        <div className="flex flex-col gap-1 w-36">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Payee</span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.payee}
-            onChange={(e) => setColumnFilters({ ...columnFilters, payee: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.payee.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Payee"
+          options={uniqueValues.payee}
+          selected={columnFilters.payee}
+          onChange={(val) => setColumnFilters({ ...columnFilters, payee: val })}
+          widthClass="w-36"
+        />
 
         {/* Document Type */}
-        <div className="flex flex-col gap-1 w-40">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Document Type</span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.docType}
-            onChange={(e) => setColumnFilters({ ...columnFilters, docType: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.docType.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Document Type"
+          options={uniqueValues.docType}
+          selected={columnFilters.docType}
+          onChange={(val) => setColumnFilters({ ...columnFilters, docType: val })}
+          widthClass="w-40"
+        />
 
         {/* Date Released */}
-        <div className="flex flex-col gap-1 w-32">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date Released</span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.dateReleased}
-            onChange={(e) => setColumnFilters({ ...columnFilters, dateReleased: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.dateReleased.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Date Released"
+          options={uniqueValues.dateReleased}
+          selected={columnFilters.dateReleased}
+          onChange={(val) => setColumnFilters({ ...columnFilters, dateReleased: val })}
+          widthClass="w-36"
+        />
 
         {/* Routed To */}
-        <div className="flex flex-col gap-1 w-32">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Routed To</span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.route}
-            onChange={(e) => setColumnFilters({ ...columnFilters, route: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.route.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Routed To"
+          options={uniqueValues.route}
+          selected={columnFilters.route}
+          onChange={(val) => setColumnFilters({ ...columnFilters, route: val })}
+          widthClass="w-36"
+        />
 
         {/* Processed By */}
-        <div className="flex flex-col gap-1 w-36">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Processed By</span>
-          <select
-            className={selectFilterClass}
-            value={columnFilters.processedBy}
-            onChange={(e) => setColumnFilters({ ...columnFilters, processedBy: e.target.value })}
-          >
-            <option value="">All</option>
-            {uniqueValues.processedBy.map((val, i) => (
-              <option key={i} value={val}>{val}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          label="Processed By"
+          options={uniqueValues.processedBy}
+          selected={columnFilters.processedBy}
+          onChange={(val) => setColumnFilters({ ...columnFilters, processedBy: val })}
+          widthClass="w-40"
+        />
 
         {/* Reset Button */}
-        {Object.keys(columnFilters).some((key) => columnFilters[key] !== '') && (
+        {Object.keys(columnFilters).some((key) => 
+          Array.isArray(columnFilters[key]) ? columnFilters[key].length > 0 : columnFilters[key] !== ''
+        ) && (
           <button
             onClick={() =>
               setColumnFilters({
-                dateSent: '',
+                dateSent: [],
                 dtsNo: '',
-                direction: '',
-                docType: '',
-                timeReceived: '',
-                dateReleased: '',
+                direction: [],
+                docType: [],
+                timeReceived: [],
+                dateReleased: [],
                 daysProcessed: '',
-                route: '',
-                processedBy: '',
-                payee: '',
+                route: [],
+                processedBy: [],
+                payee: [],
                 seriesNo: '',
                 remarks: '',
               })

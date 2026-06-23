@@ -9,7 +9,7 @@ function ArchiveAdmin() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [selectedYear, setSelectedYear] = useState('All');
-  const API_URL = import.meta.env.VITE_API_URL;
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3600';
   const adminData = localStorage.getItem('admin');
   const adminDirection = adminData ? JSON.parse(adminData).documentdirection : null;
   const getUnit = (direction) => {

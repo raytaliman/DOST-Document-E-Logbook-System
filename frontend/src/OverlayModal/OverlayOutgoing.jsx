@@ -101,6 +101,18 @@ function OverlayOutgoing({
     if (field === 'include_friday') {
       return val === true || String(val) === 'true' ? 'Yes' : 'No';
     }
+    if (field === 'networkdaysremarks') {
+      if (typeof val === 'string' && val.trim().startsWith('[')) {
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) {
+            return parsed.map(item => `${item.remarks} (${item.days} ${item.days === 1 ? 'day' : 'days'})`).join(', ');
+          }
+        } catch (e) {
+          // Fallback
+        }
+      }
+    }
     return String(val);
   };
 
