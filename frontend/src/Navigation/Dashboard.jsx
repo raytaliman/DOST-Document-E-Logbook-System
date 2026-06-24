@@ -131,10 +131,11 @@ function Dashboard() {
       // Check if the document was received today (between today 00:00 and tomorrow 00:00)
       const receivedToday = docDate >= today && docDate < tomorrow;
       
+      const normalizedRoute = (doc.route || '').replace(/_/g, ' ').toLowerCase();
       return (
         isNotArchived(doc) &&
         doc.documentdirection === 'outgoing' &&
-        (doc.route === 'ORD' || doc.route === 'Accounting_Unit') &&
+        (normalizedRoute === 'ord' || normalizedRoute === 'accounting unit') &&
         receivedToday
       );
     }).length;
@@ -168,10 +169,11 @@ function Dashboard() {
       const dayOfWeek = docDate.getDay();
       if (dayOfWeek === 0 || dayOfWeek === 6) return false;
       
+      const normalizedRoute = (doc.route || '').replace(/_/g, ' ').toLowerCase();
       return (
         isNotArchived(doc) && 
         doc.documentdirection === 'incoming' &&
-        doc.route !== 'ORD' && doc.route !== 'Accounting_Unit' &&
+        normalizedRoute !== 'ord' && normalizedRoute !== 'accounting unit' &&
         (selectedMonth === 'All' || docDate.getMonth() === months.indexOf(selectedMonth)) &&
         docDate.getFullYear() === selectedYear
       );
@@ -430,10 +432,11 @@ function Dashboard() {
       // Check if the document was received today (between today 00:00 and tomorrow 00:00)
       const receivedToday = docDate >= today && docDate < tomorrow;
       
+      const normalizedRoute = (doc.route || '').replace(/_/g, ' ').toLowerCase();
       return (
         isNotArchived(doc) &&
         doc.documentdirection === 'outgoing' &&
-        (doc.route === 'ORD' || doc.route === 'Accounting_Unit') &&
+        (normalizedRoute === 'ord' || normalizedRoute === 'accounting unit') &&
         receivedToday
       );
     });
@@ -473,10 +476,11 @@ function Dashboard() {
       const dayOfWeek = docDate.getDay();
       if (dayOfWeek === 0 || dayOfWeek === 6) return false;
       
+      const normalizedRoute = (doc.route || '').replace(/_/g, ' ').toLowerCase();
       return (
         isNotArchived(doc) && 
         doc.documentdirection === 'incoming' &&
-        doc.route !== 'ORD' && doc.route !== 'Accounting_Unit' &&
+        normalizedRoute !== 'ord' && normalizedRoute !== 'accounting unit' &&
         (selectedMonth === 'All' || docDate.getMonth() === months.indexOf(selectedMonth)) &&
         docDate.getFullYear() === selectedYear
       );
@@ -1089,7 +1093,7 @@ function Dashboard() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black ${
-                          isGood ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
+                          isGood ? 'bg-sky-50 text-sky-700 border border-sky-100/50' : 'bg-rose-50 text-rose-600'
                         }`}>
                           {user.avg.toFixed(1)} days
                         </span>
@@ -1097,7 +1101,7 @@ function Dashboard() {
                     </div>
                     <div className="mt-2.5 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${isGood ? 'from-emerald-400 to-teal-400' : 'from-rose-400 to-pink-400'}`}
+                        className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${isGood ? 'from-[#0b4c95] to-sky-400' : 'from-rose-400 to-pink-400'}`}
                         style={{ width: `${barWidth}%` }}
                       />
                     </div>
