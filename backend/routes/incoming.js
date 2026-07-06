@@ -23,10 +23,13 @@ module.exports = (app, io) => {
     try {
       const formattedDtsNo = dtsno.trim().toUpperCase();
       const manilaTime = new Date();
+      // Sanitize enum values — pass null instead of empty string to avoid cast errors
+      const safeTime = (time && time.trim() !== '' && time.trim() !== '-') ? time.trim() : null;
+      const safeRoute = (route && route.trim() !== '' && route.trim() !== '-') ? route.trim() : null;
       const newRecordRes = await pool.query(
         `INSERT INTO tbldocuments 
          (dtsno, documenttype, documentdirection, datesent, datereleased, time, route, remarks, networkdaysremarks, calcnetworkdays, deducteddays, isarchive, processedby, payee, amount, seriesno, particulars, queueno)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         VALUES ($1, $2, $3, $4, $5, $6::time_enum, $7::route_enum, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           formattedDtsNo,
@@ -34,8 +37,8 @@ module.exports = (app, io) => {
           'incoming',
           manilaTime,
           null,
-          time || null,
-          route || null,
+          safeTime,
+          safeRoute,
           null,
           null,
           0,
@@ -66,32 +69,45 @@ module.exports = (app, io) => {
     }
     try {
       const formattedDtsNo = dtsno.trim().toUpperCase();
-      const existingRecordRes = await pool.query(
+      // Sanitize enum values — pass null instead of empty string to avoid cast errors
+      const safeTime = (time && time.trim() !== '' && time.trim() !== '-') ? time.trim() : null;
+      const safeRoute = (route && route.trim() !== '' && route.trim() !== '-') ? route.trim() : null;
+      await pool.query(
         'SELECT * FROM tbldocuments WHERE dtsno = $1 AND documentid <> $2 LIMIT 1',
         [formattedDtsNo, parseInt(id)]
       );
       const updatedRecordRes = await pool.query(
         `UPDATE tbldocuments 
-         SET dtsno = $1, documenttype = $2, processedby = COALESCE($3, processedby),
+         SET dtsno = $1,
+             documenttype = COALESCE($2, documenttype),
+             processedby = COALESCE($3, processedby),
              payee = $4, amount = $5, seriesno = $6, particulars = $7, queueno = $8,
-             time = $9, route = $10,
-             documentdirection = CASE WHEN ($9 IS NOT NULL AND $9 <> '' AND $9 <> '-') OR ($10 IS NOT NULL AND $10 <> '' AND $10 <> '-') THEN 'outgoing' ELSE 'incoming' END
-         WHERE documentid = $11 
+             time = $9::time_enum,
+             route = $10::route_enum,
+             documentdirection = CASE
+               WHEN ($9 IS NOT NULL) OR ($10 IS NOT NULL)
+               THEN 'outgoing'::documentdirection_enum
+               ELSE 'incoming'::documentdirection_enum
+             END
+         WHERE documentid = $11
          RETURNING *`,
         [
-          formattedDtsNo, 
-          documenttype?.trim() || null, 
-          processedby?.trim() || null, 
-          payee?.trim() || null, 
-          amount ? parseFloat(amount) : null, 
-          seriesno?.trim() || null, 
-          particulars?.trim() || null, 
-          queueno?.trim() || null, 
-          time || null, 
-          route || null, 
+          formattedDtsNo,
+          documenttype?.trim() || null,
+          processedby?.trim() || null,
+          payee?.trim() || null,
+          amount ? parseFloat(amount) : null,
+          seriesno?.trim() || null,
+          particulars?.trim() || null,
+          queueno?.trim() || null,
+          safeTime,
+          safeRoute,
           parseInt(id)
         ]
       );
+      if (!updatedRecordRes.rows[0]) {
+        return res.status(404).json({ error: 'Record not found', id });
+      }
       res.json(updatedRecordRes.rows[0]);
       io.emit('documents_updated');
     } catch (error) {
