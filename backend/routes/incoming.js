@@ -16,7 +16,7 @@ module.exports = (app, io) => {
 
   // Add new incoming document
   app.post('/api/incoming', async (req, res) => {
-    const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
+    const { dtsno, documenttype, processedbyid, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
     if (!dtsno) {
       return res.status(400).json({ error: 'Required fields missing', required: ['dtsno'] });
     }
@@ -28,7 +28,7 @@ module.exports = (app, io) => {
       const safeRoute = (route && route.trim() !== '' && route.trim() !== '-') ? route.trim() : null;
       const newRecordRes = await pool.query(
         `INSERT INTO tbldocuments 
-         (dtsno, documenttype, documentdirection, datesent, datereleased, time, route, remarks, networkdaysremarks, calcnetworkdays, deducteddays, isarchive, processedby, payee, amount, seriesno, particulars, queueno)
+         (dtsno, documenttype, documentdirection, datesent, datereleased, time, route, remarks, networkdaysremarks, calcnetworkdays, deducteddays, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno)
          VALUES ($1, $2, $3, $4, $5, $6::time_enum, $7::route_enum, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
@@ -44,7 +44,7 @@ module.exports = (app, io) => {
           0,
           0,
           false,
-          processedby?.trim() || null,
+          processedbyid ? parseInt(processedbyid) : null,
           payee?.trim() || null,
           amount ? parseFloat(amount) : null,
           seriesno?.trim() || null,
@@ -63,7 +63,7 @@ module.exports = (app, io) => {
   // Update incoming document
   app.put('/api/incoming/:id', async (req, res) => {
     const { id } = req.params;
-    const { dtsno, documenttype, processedby, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
+    const { dtsno, documenttype, processedbyid, payee, amount, seriesno, particulars, queueno, time, route } = req.body;
     if (!dtsno) {
       return res.status(400).json({ error: 'Required fields missing', required: ['dtsno'] });
     }
@@ -80,7 +80,7 @@ module.exports = (app, io) => {
         `UPDATE tbldocuments 
          SET dtsno = $1,
              documenttype = COALESCE($2, documenttype),
-             processedby = COALESCE($3, processedby),
+             processedbyid = COALESCE($3, processedbyid),
              payee = $4, amount = $5, seriesno = $6, particulars = $7, queueno = $8,
              time = $9::time_enum,
              route = $10::route_enum,
@@ -94,7 +94,7 @@ module.exports = (app, io) => {
         [
           formattedDtsNo,
           documenttype?.trim() || null,
-          processedby?.trim() || null,
+          processedbyid ? parseInt(processedbyid) : null,
           payee?.trim() || null,
           amount ? parseFloat(amount) : null,
           seriesno?.trim() || null,

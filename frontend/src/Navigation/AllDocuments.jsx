@@ -352,7 +352,7 @@ function AllDocs() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           datereleased: formattedDateReleased,
-          processedby: admin?.adminname || null
+          processedbyid: admin?.adminid || null
         }),
       });
 

@@ -418,7 +418,7 @@ function OverlayIncoming({
         queueno: formData.queueNo?.trim() || null,
         documenttype: selectedDocType ? selectedDocType.trim() : null,
         documentdirection: 'incoming',
-        processedby: admin.adminname || null,
+        processedbyid: admin.adminid || null,
         payee: finalPayee,
         amount: formData.amount ? parseFloat(formData.amount) : null,
         time: formData.time || null,

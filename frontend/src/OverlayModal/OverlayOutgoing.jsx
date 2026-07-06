@@ -602,7 +602,7 @@ function OverlayOutgoing({
         route: formData.route.trim(),
         remarks: formData.remarks?.trim() || null,
         documentdirection: 'outgoing',
-        processedby: admin.adminname || null,
+        processedbyid: admin.adminid || null,
         payee: finalPayee,
         amount: formData.amount ? parseFloat(formData.amount) : null,
         include_friday: formData.includeFriday,

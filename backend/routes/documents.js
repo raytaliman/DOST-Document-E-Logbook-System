@@ -31,15 +31,16 @@ module.exports = (app, io) => {
     try {
       const { direction } = req.query;
       let query = `
-        SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, isarchive, documentdirection, calcnetworkdays, deducteddays, networkdaysremarks, daysprocessed, processedby, payee, amount, seriesno, particulars, queueno, include_friday 
-        FROM tbldocuments
+        SELECT d.documentid, d.dtsno, d.documenttype, d.datesent, d.datereleased, d.time, d.route, d.remarks, d.isarchive, d.documentdirection, d.calcnetworkdays, d.deducteddays, d.networkdaysremarks, d.daysprocessed, d.processedbyid, a.adminname AS processedby, d.payee, d.amount, d.seriesno, d.particulars, d.queueno, d.include_friday 
+        FROM tbldocuments d
+        LEFT JOIN tbladmin a ON d.processedbyid = a.adminid
       `;
       const params = [];
       if (direction) {
-        query += ' WHERE documentdirection = $1';
+        query += ' WHERE d.documentdirection = $1';
         params.push(direction.toLowerCase());
       }
-      query += ' ORDER BY datesent DESC';
+      query += ' ORDER BY d.datesent DESC';
       
       const result = await pool.query(query, params);
       res.json(result.rows);
@@ -51,7 +52,7 @@ module.exports = (app, io) => {
 
   // Create document
   app.post('/api/documents', async (req, res) => {
-    const { dtsno, documenttype, route, remarks, datesent, datereleased, processedby, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
+    const { dtsno, documenttype, route, remarks, datesent, datereleased, processedbyid, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
     
     if (!dtsno || !route) {
       return res.status(400).json({ 
@@ -77,7 +78,7 @@ module.exports = (app, io) => {
 
         const result = await client.query(
           `INSERT INTO tbldocuments 
-            (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive, processedby, payee, amount, seriesno, particulars, queueno, include_friday) 
+            (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno, include_friday) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
             RETURNING *`,
           [
@@ -90,7 +91,7 @@ module.exports = (app, io) => {
             datereleased,
             null,
             false,
-            processedby?.trim() || null,
+            processedbyid ? parseInt(processedbyid) : null,
             payee?.trim() || null,
             amount ? parseFloat(amount) : null,
             seriesno?.trim() || null,
@@ -101,10 +102,18 @@ module.exports = (app, io) => {
         );
 
         const newDoc = result.rows[0];
+        
+        // Resolve admin name for audit log
+        let creatorName = 'System';
+        if (newDoc.processedbyid) {
+          const adminRes = await client.query('SELECT adminname FROM tbladmin WHERE adminid = $1', [newDoc.processedbyid]);
+          if (adminRes.rows[0]) creatorName = adminRes.rows[0].adminname;
+        }
+
         await logAudit(client, {
           documentid: newDoc.documentid,
           action: 'CREATE',
-          changedby: processedby?.trim() || 'System',
+          changedby: creatorName,
           changes: {
             dtsno: { old: null, new: newDoc.dtsno },
             documenttype: { old: null, new: newDoc.documenttype },
@@ -112,7 +121,7 @@ module.exports = (app, io) => {
             remarks: { old: null, new: newDoc.remarks },
             datesent: { old: null, new: datesent },
             datereleased: { old: null, new: newDoc.datereleased },
-            processedby: { old: null, new: newDoc.processedby },
+            processedbyid: { old: null, new: newDoc.processedbyid },
             payee: { old: null, new: newDoc.payee },
             amount: { old: null, new: newDoc.amount },
             seriesno: { old: null, new: newDoc.seriesno },
@@ -140,7 +149,7 @@ module.exports = (app, io) => {
   // Update document
   app.put('/api/documents/:id', async (req, res) => {
     const { id } = req.params;
-    const { dtsno, documenttype, route, remarks, time, datereleased, datesent, processedby, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
+    const { dtsno, documenttype, route, remarks, time, datereleased, datesent, processedbyid, payee, amount, seriesno, particulars, queueno, include_friday } = req.body;
     
     try {
         // Time-only quick edit
@@ -159,8 +168,15 @@ module.exports = (app, io) => {
               );
               const newDoc = result.rows[0];
               const changes = diffFields(oldDoc, newDoc, ['time', 'documentdirection']);
+              
+              let editorName = 'System';
+              if (processedbyid) {
+                const adminRes = await client.query('SELECT adminname FROM tbladmin WHERE adminid = $1', [parseInt(processedbyid)]);
+                if (adminRes.rows[0]) editorName = adminRes.rows[0].adminname;
+              }
+
               if (changes) {
-                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
+                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: editorName, changes });
               }
               await client.query('COMMIT');
               io.emit('documents_updated');
@@ -189,8 +205,15 @@ module.exports = (app, io) => {
               );
               const newDoc = result.rows[0];
               const changes = diffFields(oldDoc, newDoc, ['route', 'documentdirection']);
+              
+              let editorName = 'System';
+              if (processedbyid) {
+                const adminRes = await client.query('SELECT adminname FROM tbladmin WHERE adminid = $1', [parseInt(processedbyid)]);
+                if (adminRes.rows[0]) editorName = adminRes.rows[0].adminname;
+              }
+
               if (changes) {
-                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
+                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: editorName, changes });
               }
               await client.query('COMMIT');
               io.emit('documents_updated');
@@ -216,8 +239,15 @@ module.exports = (app, io) => {
               );
               const newDoc = result.rows[0];
               const changes = diffFields(oldDoc, newDoc, ['datereleased']);
+              
+              let editorName = 'System';
+              if (processedbyid) {
+                const adminRes = await client.query('SELECT adminname FROM tbladmin WHERE adminid = $1', [parseInt(processedbyid)]);
+                if (adminRes.rows[0]) editorName = adminRes.rows[0].adminname;
+              }
+
               if (changes) {
-                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: processedby || 'System', changes });
+                await logAudit(client, { documentid: parseInt(id), action: 'UPDATE', changedby: editorName, changes });
               }
               await client.query('COMMIT');
               io.emit('documents_updated');
@@ -269,7 +299,7 @@ module.exports = (app, io) => {
                   SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
                       time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datereleased = $7, datesent = COALESCE($8, datesent),
-                      processedby = COALESCE($9, processedby),
+                      processedbyid = COALESCE($9, processedbyid),
                       payee = $10, amount = $11, seriesno = $12, particulars = $13, queueno = $14,
                       include_friday = $15,
                       documentdirection = CASE WHEN (CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END IS NOT NULL) OR ($3::text IS NOT NULL AND $3::text <> '' AND $3::text <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
@@ -285,7 +315,7 @@ module.exports = (app, io) => {
                   timeProvided ? timeValue : null,
                   datereleased,
                   datesentDate,
-                  processedby?.trim() || null,
+                  processedbyid ? parseInt(processedbyid) : null,
                   payee?.trim() || null,
                   amount ? parseFloat(amount) : null,
                   seriesno?.trim() || null,
@@ -300,7 +330,7 @@ module.exports = (app, io) => {
                   SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
                       time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datesent = COALESCE($7, datesent),
-                      processedby = COALESCE($8, processedby),
+                      processedbyid = COALESCE($8, processedbyid),
                       payee = $9, amount = $10, seriesno = $11, particulars = $12, queueno = $13,
                       include_friday = $14,
                       documentdirection = CASE WHEN (CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END IS NOT NULL) OR ($3::text IS NOT NULL AND $3::text <> '' AND $3::text <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
@@ -315,7 +345,7 @@ module.exports = (app, io) => {
                   timeProvided,
                   timeProvided ? timeValue : null,
                   datesentDate,
-                  processedby?.trim() || null,
+                  processedbyid ? parseInt(processedbyid) : null,
                   payee?.trim() || null,
                   amount ? parseFloat(amount) : null,
                   seriesno?.trim() || null,
@@ -330,13 +360,20 @@ module.exports = (app, io) => {
           const updatedDoc = result.rows[0];
 
           // Log only changed fields
-          const trackedFields = ['dtsno','documenttype','route','remarks','time','datereleased','datesent','processedby','payee','amount','seriesno','particulars','queueno', 'include_friday', 'documentdirection'];
+          const trackedFields = ['dtsno','documenttype','route','remarks','time','datereleased','datesent','processedbyid','payee','amount','seriesno','particulars','queueno', 'include_friday', 'documentdirection'];
           const changes = diffFields(oldDoc, updatedDoc, trackedFields);
+          
+          let editorName = 'System';
+          if (processedbyid) {
+            const adminRes = await client.query('SELECT adminname FROM tbladmin WHERE adminid = $1', [parseInt(processedbyid)]);
+            if (adminRes.rows[0]) editorName = adminRes.rows[0].adminname;
+          }
+
           if (changes) {
             await logAudit(client, {
               documentid: parseInt(id),
               action: 'UPDATE',
-              changedby: processedby?.trim() || 'System',
+              changedby: editorName,
               changes
             });
           }
@@ -458,10 +495,11 @@ module.exports = (app, io) => {
   app.get('/api/documents/archived', async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT documentid, dtsno, documenttype, datesent, datereleased, time, route, remarks, archivedate, archivedby, documentdirection, daysprocessed, payee, amount, seriesno, particulars, queueno, include_friday 
-         FROM tbldocuments 
-         WHERE isarchive = true 
-         ORDER BY archivedate DESC`
+        `SELECT d.documentid, d.dtsno, d.documenttype, d.datesent, d.datereleased, d.time, d.route, d.remarks, d.archivedate, d.archivedby, d.documentdirection, d.daysprocessed, a.adminname AS processedby, d.payee, d.amount, d.seriesno, d.particulars, d.queueno, d.include_friday 
+         FROM tbldocuments d
+         LEFT JOIN tbladmin a ON d.processedbyid = a.adminid
+         WHERE d.isarchive = true 
+         ORDER BY d.archivedate DESC`
       );
       res.json(result.rows);
     } catch (error) {
