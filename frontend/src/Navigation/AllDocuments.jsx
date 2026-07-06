@@ -221,8 +221,7 @@ const parseToDate = (dateStr) => {
 };
 
 function AllDocs() {
-  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3600';
-  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl.slice(0, -4) : rawApiUrl;
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3600';
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

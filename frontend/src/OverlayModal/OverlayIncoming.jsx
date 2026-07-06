@@ -40,8 +40,7 @@ function OverlayIncoming({
   const [showAudit, setShowAudit] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
 
-  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3600';
-  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl.slice(0, -4) : rawApiUrl;
+  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     function handleClickOutside(event) {
