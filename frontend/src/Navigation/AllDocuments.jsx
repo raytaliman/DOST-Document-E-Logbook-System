@@ -152,7 +152,8 @@ const formatDate = (dateString) => {
     ) {
       return dateString;
     }
-    const m = moment.utc(dateString);
+    // Convert UTC timestamp → local (Asia/Manila) time before formatting
+    const m = moment.utc(dateString).local();
     return m.isValid() ? m.format('MMMM D, YYYY [at] h:mm A') : '-';
   } catch (e) {
     return '-';
@@ -174,7 +175,8 @@ const formatDateOnly = (dateString) => {
         return match[1];
       }
     }
-    const m = moment.utc(dateString);
+    // Convert UTC timestamp → local (Asia/Manila) time before formatting
+    const m = moment.utc(dateString).local();
     return m.isValid() ? m.format('MMMM D, YYYY') : '-';
   } catch (e) {
     return '-';
@@ -192,7 +194,8 @@ const formatTimeOnly = (dateString) => {
         return dateString.substring(atIndex + 4).trim();
       }
     }
-    const m = moment.utc(dateString);
+    // Convert UTC timestamp → local (Asia/Manila) time before formatting
+    const m = moment.utc(dateString).local();
     return m.isValid() ? m.format('h:mm A') : '-';
   } catch (e) {
     return '-';
