@@ -62,7 +62,8 @@ function Dashboard() {
   const filterMonths = ['All', ...months];
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
-  const API_URL = import.meta.env.VITE_API_URL;
+  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3600';
+  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl.slice(0, -4) : rawApiUrl;
   const isNotArchived = doc => doc.isarchive === false;
 
   const fetchDocuments = useCallback(async () => {

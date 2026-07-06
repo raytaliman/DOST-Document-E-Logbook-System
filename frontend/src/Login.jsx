@@ -10,7 +10,8 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const formRef = useRef(null);
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3600';
+  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3600';
+  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl.slice(0, -4) : rawApiUrl;
 
   useEffect(() => {
     const adminData = localStorage.getItem('admin');

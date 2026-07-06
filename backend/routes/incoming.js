@@ -29,11 +29,11 @@ module.exports = (app, io) => {
       const newRecordRes = await pool.query(
         `INSERT INTO tbldocuments 
          (dtsno, documenttype, documentdirection, datesent, datereleased, time, route, remarks, networkdaysremarks, calcnetworkdays, deducteddays, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno)
-         VALUES ($1, $2, $3, $4, $5, $6::time_enum, $7::route_enum, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         VALUES ($1, $2, $3, $4, $5, $6::time_enum, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           formattedDtsNo,
-          documenttype?.trim() || null,
+          documenttype?.trim() || '-',
           'incoming',
           manilaTime,
           null,
@@ -83,9 +83,9 @@ module.exports = (app, io) => {
              processedbyid = COALESCE($3, processedbyid),
              payee = $4, amount = $5, seriesno = $6, particulars = $7, queueno = $8,
              time = $9::time_enum,
-             route = $10::route_enum,
+             route = $10,
              documentdirection = CASE
-               WHEN ($9 IS NOT NULL) OR ($10 IS NOT NULL)
+               WHEN ($9 IS NOT NULL) OR ($10 IS NOT NULL AND $10 <> '' AND $10 <> '-')
                THEN 'outgoing'::documentdirection_enum
                ELSE 'incoming'::documentdirection_enum
              END

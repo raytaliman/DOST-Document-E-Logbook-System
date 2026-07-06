@@ -43,7 +43,8 @@ function OverlayOutgoing({
   const [showCustomPayee, setShowCustomPayee] = useState(false);
   const payeeDropdownRef = useRef(null);
 
-  const API_URL = import.meta.env.VITE_API_URL;
+  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3600';
+  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl.slice(0, -4) : rawApiUrl;
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -488,6 +489,9 @@ function OverlayOutgoing({
     }
     if (!formData.dtsNo || formData.dtsNo === '') {
       newErrors.dtsNo = 'This field is required.';
+    }
+    if (!selectedDocType || selectedDocType === '') {
+      newErrors.documentType = 'This field is required.';
     }
     // Validate date received only when required
     if (

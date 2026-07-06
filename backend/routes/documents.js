@@ -296,7 +296,7 @@ module.exports = (app, io) => {
           if (typeof datereleased !== 'undefined') {
               query = `
                   UPDATE tbldocuments 
-                  SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
+                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
                       time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datereleased = $7, datesent = COALESCE($8, datesent),
                       processedbyid = COALESCE($9, processedbyid),
@@ -327,7 +327,7 @@ module.exports = (app, io) => {
           } else {
               query = `
                   UPDATE tbldocuments 
-                  SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
+                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
                       time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datesent = COALESCE($7, datesent),
                       processedbyid = COALESCE($8, processedbyid),
