@@ -85,7 +85,7 @@ module.exports = (app, io) => {
              time = $9::time_enum,
              route = $10,
              documentdirection = CASE
-               WHEN ($9 IS NOT NULL) OR ($10 IS NOT NULL AND $10 <> '' AND $10 <> '-')
+               WHEN ($9::time_enum IS NOT NULL) OR (route IS NOT NULL AND route <> '' AND route <> '-')
                THEN 'outgoing'::documentdirection_enum
                ELSE 'incoming'::documentdirection_enum
              END
