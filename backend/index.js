@@ -21,6 +21,7 @@ app.use(bodyParser.json());
 
 // Import and use route modules
 require('./routes/login')(app);
+require('./routes/microsoftAuth')(app);
 require('./routes/documents')(app, io);
 require('./routes/incoming')(app, io);
 require('./routes/documentTypes')(app, io);
