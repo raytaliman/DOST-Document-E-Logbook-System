@@ -7,8 +7,7 @@ module.exports = (app) => {
   const REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI;
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-  // Endpoint to initiate Microsoft 365 OAuth 2.0 flow
-  app.get('/api/auth/microsoft', (req, res) => {
+  const handleAuthorize = (req, res) => {
     if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
       console.error('Microsoft 365 OAuth configuration is missing in environment variables.');
       return res.redirect(`${FRONTEND_URL}/?m365_error=${encodeURIComponent('OAuth Configuration Missing')}`);
@@ -23,10 +22,9 @@ module.exports = (app) => {
       `&state=dost_elogbook_m365`;
 
     res.redirect(authUrl);
-  });
+  };
 
-  // Callback endpoint for Microsoft 365 OAuth 2.0 flow
-  app.get('/api/auth/microsoft/callback', async (req, res) => {
+  const handleCallback = async (req, res) => {
     const { code, error, error_description } = req.query;
 
     if (error) {
@@ -115,5 +113,13 @@ module.exports = (app) => {
       console.error('Error during Microsoft 365 authentication:', err);
       return res.redirect(`${FRONTEND_URL}/?m365_error=${encodeURIComponent('Internal server error during authentication')}`);
     }
-  });
+  };
+
+  // Endpoint to initiate Microsoft 365 OAuth 2.0 flow
+  app.get('/api/auth/microsoft', handleAuthorize);
+  app.get('/auth/microsoft', handleAuthorize);
+
+  // Callback endpoint for Microsoft 365 OAuth 2.0 flow
+  app.get('/api/auth/microsoft/callback', handleCallback);
+  app.get('/auth/microsoft/callback', handleCallback);
 };
