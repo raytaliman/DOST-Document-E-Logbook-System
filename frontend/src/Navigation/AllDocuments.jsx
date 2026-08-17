@@ -1548,24 +1548,11 @@ function AllDocs() {
                     const isTimeSelectDisabled =
                       archivingId === doc.id ||
                       updatingTimeId === doc.id ||
-                      doc.archiveStatus ||
-                      !(
-                        adminDirection === 'all' ||
-                        (adminDirection === 'incoming' &&
-                          (doc.documentDirection?.toLowerCase() === 'incoming' ||
-                            doc.dateReceive === '-' ||
-                            !doc.dateReceive)) ||
-                        (doc.documentDirection?.toLowerCase() === 'outgoing' &&
-                          adminDirection === 'outgoing') ||
-                        adminUserType === 'superadmin'
-                      );
+                      doc.archiveStatus;
 
                     const isDateReleasedEditable =
                       !doc.archiveStatus &&
-                      (doc.dateReceive === '-' || !doc.dateReceive) &&
-                      (adminDirection === 'all' ||
-                        adminDirection === 'outgoing' ||
-                        adminUserType === 'superadmin');
+                      (doc.dateReceive === '-' || !doc.dateReceive);
 
                     return (
                       <tr key={doc.id}>
