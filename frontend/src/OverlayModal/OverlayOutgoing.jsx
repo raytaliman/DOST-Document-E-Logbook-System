@@ -84,6 +84,10 @@ function OverlayOutgoing({
     ARCHIVE:         { label: 'Archived',           color: 'bg-amber-100 text-amber-700' },
     RESTORE:         { label: 'Restored',           color: 'bg-teal-100 text-teal-700' },
     PROCESSING_DAYS: { label: 'Processing Days',    color: 'bg-purple-100 text-purple-700' },
+    OBLIGATED:       { label: 'Obligated',          color: 'bg-amber-100 text-amber-700' },
+    OBLIGATE:        { label: 'Obligated',          color: 'bg-amber-100 text-amber-700' },
+    REVIEWED:        { label: 'Reviewed',           color: 'bg-indigo-100 text-indigo-700' },
+    ROUTED:          { label: 'Routed',             color: 'bg-rose-100 text-rose-700' },
   };
 
   const FIELD_LABELS = {
@@ -1142,6 +1146,11 @@ function OverlayOutgoing({
                     const meta = ACTION_META[entry.action] || { label: entry.action, color: 'bg-slate-100 text-slate-600' };
                     const changes = entry.changes || {};
                     const changeKeys = Object.keys(changes);
+                    const visibleKeys = changeKeys.filter(k => {
+                      if (k === 'processedbyid' || k === 'status') return false;
+                      const c = changes[k];
+                      return entry.action !== 'CREATE' || (c.new !== null && c.new !== '' && c.new !== undefined);
+                    });
                     return (
                       <div key={entry.auditid} className="flex gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-white hover:shadow-sm transition-all">
                         <div className="flex-shrink-0 w-1.5 rounded-full self-stretch" style={{ background: meta.color.includes('emerald') ? '#10b981' : meta.color.includes('blue') ? '#3b82f6' : meta.color.includes('amber') ? '#f59e0b' : meta.color.includes('teal') ? '#14b8a6' : '#a855f7' }} />
@@ -1153,12 +1162,9 @@ function OverlayOutgoing({
                             )}
                             <span className="text-[10px] text-slate-400 ml-auto">{formatAuditDate(entry.changedat)}</span>
                           </div>
-                          {changeKeys.length > 0 && (
+                          {visibleKeys.length > 0 && entry.action !== 'OBLIGATED' && entry.action !== 'OBLIGATE' && entry.action !== 'REVIEWED' && entry.action !== 'ROUTED' && (
                             <div className="mt-1.5 space-y-0.5">
-                              {changeKeys.filter(k => {
-                                const c = changes[k];
-                                return entry.action !== 'CREATE' || (c.new !== null && c.new !== '' && c.new !== undefined);
-                              }).map(field => {
+                              {visibleKeys.map(field => {
                                 const c = changes[field];
                                 const label = { ...FIELD_LABELS, include_friday: 'Include Friday' }[field] || field;
                                 if (entry.action === 'CREATE') {

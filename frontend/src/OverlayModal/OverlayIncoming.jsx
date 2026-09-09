@@ -39,6 +39,8 @@ function OverlayIncoming({
   const [auditTrail, setAuditTrail] = useState([]);
   const [showAudit, setShowAudit] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [isFormEnabled, setIsFormEnabled] = useState(!editingDoc);
+  const isReadOnly = viewMode || !isFormEnabled;
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -174,6 +176,10 @@ function OverlayIncoming({
     ARCHIVE:         { label: 'Archived',        color: 'bg-amber-100 text-amber-700' },
     RESTORE:         { label: 'Restored',        color: 'bg-teal-100 text-teal-700' },
     PROCESSING_DAYS: { label: 'Processing Days', color: 'bg-purple-100 text-purple-700' },
+    OBLIGATED:       { label: 'Obligated',       color: 'bg-amber-100 text-amber-700' },
+    OBLIGATE:        { label: 'Obligated',       color: 'bg-amber-100 text-amber-700' },
+    REVIEWED:        { label: 'Reviewed',        color: 'bg-indigo-100 text-indigo-700' },
+    ROUTED:          { label: 'Routed',          color: 'bg-rose-100 text-rose-700' },
   };
 
   const FIELD_LABELS = {
@@ -207,7 +213,7 @@ function OverlayIncoming({
   };
 
   const handleInputChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     const { name, value } = e.target;
     let newValue = value;
     if (name === 'dtsNo') {
@@ -217,40 +223,40 @@ function OverlayIncoming({
   };
 
   const handleDtsNoChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     const value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     setFormData({ ...formData, dtsNo: value });
     if (errors.dtsNo) setErrors((prev) => ({ ...prev, dtsNo: '' }));
   };
 
   const handleSeriesNoChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     setFormData({ ...formData, seriesNo: e.target.value });
     if (errors.seriesNo) setErrors((prev) => ({ ...prev, seriesNo: '' }));
   };
 
   const handleParticularsChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     setFormData({ ...formData, particulars: e.target.value });
   };
 
   const handleQueueNoChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     setFormData({ ...formData, queueNo: e.target.value });
   };
 
   const handleTimeChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     setFormData({ ...formData, time: e.target.value });
   };
 
   const handleRouteChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     setFormData({ ...formData, route: e.target.value });
   };
 
   const handleDocTypeChange = (e) => {
-    if (viewMode) return;
+    if (isReadOnly) return;
     const value = e.target.value;
     setSelectedDocType(value);
     setShowCustomDocType(value === 'Others');
@@ -478,10 +484,110 @@ function OverlayIncoming({
     }
   };
 
+  const handleWorkflowAction = async (actionText) => {
+    if (!editingDoc) return;
+    
+    if (actionText === 'Route') {
+      const options = {};
+      routes.forEach(r => { options[r.routename] = r.routename; });
+      const { value: selectedRoute } = await Swal.fire({
+        title: 'Route Document',
+        input: 'select',
+        inputOptions: options,
+        inputPlaceholder: 'Select a unit...',
+        showCancelButton: true,
+        confirmButtonText: 'Route',
+        cancelButtonText: 'Cancel',
+        buttonsStyling: false,
+        width: '24em',
+        padding: '1.5em',
+        customClass: { 
+          popup: 'rounded-xl',
+          title: '!text-base font-bold text-slate-800 !p-0 !m-0 !mb-3',
+          input: '!text-xs !py-2 !px-3 !h-9 border border-slate-200 rounded-lg outline-none focus:border-[#0b4c95] focus:ring-1 focus:ring-[#0b4c95] w-full !m-0 !mb-4',
+          actions: 'flex justify-end gap-2 !w-full !p-0 !m-0',
+          confirmButton: 'modal-submit-btn !h-8 !px-4 !text-xs !m-0',
+          cancelButton: 'modal-cancel-btn !h-8 !px-4 !text-xs !m-0'
+        }
+      });
+
+      if (!selectedRoute) return;
+
+      try {
+        const admin = JSON.parse(localStorage.getItem('admin') || '{}');
+        const response = await fetch(`${API_URL}/api/documents/${editingDoc.documentid}/route`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ route: selectedRoute, adminname: admin.adminname }),
+        });
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Failed to route document');
+        }
+        setFormData(prev => ({ ...prev, route: selectedRoute }));
+        Swal.fire({
+          icon: 'success',
+          title: 'Routed!',
+          text: `Document has been routed to ${selectedRoute}.`,
+          timer: 1500,
+          showConfirmButton: false,
+          customClass: { popup: 'swal2-minimalist' },
+        });
+        if (onSuccess) onSuccess();
+        else onClose();
+      } catch (err) {
+        console.error('Route error:', err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: err.message,
+          timer: 2500,
+          showConfirmButton: false,
+          customClass: { popup: 'swal2-minimalist' },
+        });
+      }
+      return;
+    }
+
+    try {
+      const admin = JSON.parse(localStorage.getItem('admin') || '{}');
+      const isReview = actionText === 'Review';
+      const response = await fetch(`${API_URL}/api/documents/${editingDoc.documentid}/obligate`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminid: admin.adminid, adminname: admin.adminname, action: isReview ? 'REVIEWED' : 'OBLIGATED' }),
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || `Failed to ${isReview ? 'review' : 'obligate'} document`);
+      }
+      Swal.fire({
+        icon: 'success',
+        title: isReview ? 'Reviewed!' : 'Obligated!',
+        text: `Document has been marked as ${isReview ? 'reviewed' : 'obligated'}.`,
+        timer: 1500,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+      if (onSuccess) onSuccess();
+      else onClose();
+    } catch (err) {
+      console.error('Workflow error:', err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: err.message,
+        timer: 2500,
+        showConfirmButton: false,
+        customClass: { popup: 'swal2-minimalist' },
+      });
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (!isOpen) return;
-      if (event.key === 'Enter' && !viewMode && !isSubmitting) {
+      if (event.key === 'Enter' && !isReadOnly && !isSubmitting) {
         event.preventDefault();
         handleSubmit();
       } else if (event.key === 'Escape') {
@@ -554,58 +660,32 @@ function OverlayIncoming({
                   onKeyPress={(e) => {
                     if (!/[a-zA-Z0-9]/.test(e.key)) e.preventDefault();
                   }}
-                  readOnly={viewMode}
+                  readOnly={isReadOnly}
                 />
                 {errors.dtsNo && <p className="modal-error-msg">{errors.dtsNo}</p>}
-              </div>
-
-              {/* Series No */}
-              <div className="modal-field">
-                <label className="modal-label">Series No.</label>
-                <input
-                  type="text"
-                  name="seriesNo"
-                  placeholder="e.g. 2026-0001"
-                  className="modal-input"
-                  value={formData.seriesNo}
-                  onChange={handleSeriesNoChange}
-                  readOnly={viewMode}
-                />
-                {errors.seriesNo && <p className="modal-error-msg">{errors.seriesNo}</p>}
               </div>
 
               {/* Gross Amount Field */}
               <div className="modal-field">
                 <label className="modal-label">Gross Amount</label>
                 <input
-                  type={viewMode ? "text" : "number"}
+                  type={isReadOnly ? "text" : "number"}
                   name="amount"
                   step="0.01"
                   placeholder="e.g. 1500.00"
                   className="modal-input"
                   value={formData.amount}
                   onChange={handleInputChange}
-                  readOnly={viewMode}
+                  readOnly={isReadOnly}
                 />
               </div>
 
-              {/* Processed By Field */}
-              {editingDoc && (
-                <div className="modal-field">
-                  <label className="modal-label">Processed By</label>
-                  <input
-                    type="text"
-                    className="modal-input bg-slate-50 border-slate-200"
-                    value={formData.processedBy || '-'}
-                    disabled
-                  />
-                </div>
-              )}
+
 
               {/* Payee Selection (col-span-2) */}
               <div className="modal-field relative font-sans md:col-span-2" ref={payeeDropdownRef}>
                 <label className="modal-label">Payee</label>
-                {viewMode ? (
+                {isReadOnly ? (
                   <input
                     type="text"
                     className="modal-input"
@@ -683,7 +763,7 @@ function OverlayIncoming({
               </div>
 
               {/* Custom Payee input (col-span-2) */}
-              {showCustomPayee && !viewMode && (
+              {showCustomPayee && !isReadOnly && (
                 <div className="modal-field animate-fadeIn md:col-span-2">
                   <label className="modal-label text-sky-700">New Payee Name</label>
                   <input
@@ -711,12 +791,12 @@ function OverlayIncoming({
                   className="modal-textarea min-h-[5rem]"
                   value={formData.particulars}
                   onChange={handleParticularsChange}
-                  readOnly={viewMode}
+                  readOnly={isReadOnly}
                 />
               </div>
 
               {/* Remarks (View Mode Only) (col-span-2) */}
-              {viewMode && editingDoc?.remarks && (
+              {isReadOnly && editingDoc?.remarks && (
                 <div className="modal-field md:col-span-2">
                   <label className="modal-label">Remarks</label>
                   <div className="modal-textarea !h-auto min-h-[5.5rem] bg-slate-50 border-slate-200">
@@ -744,8 +824,23 @@ function OverlayIncoming({
                       className="modal-input"
                       value={formData.queueNo}
                       onChange={handleQueueNoChange}
-                      readOnly={viewMode}
+                      readOnly={isReadOnly}
                     />
+                  </div>
+
+                  {/* Series No */}
+                  <div className="modal-field">
+                    <label className="modal-label">Series No.</label>
+                    <input
+                      type="text"
+                      name="seriesNo"
+                      placeholder="e.g. 2026-0001"
+                      className="modal-input"
+                      value={formData.seriesNo}
+                      onChange={handleSeriesNoChange}
+                      readOnly={isReadOnly}
+                    />
+                    {errors.seriesNo && <p className="modal-error-msg">{errors.seriesNo}</p>}
                   </div>
 
                   {/* Document Type Dropdown */}
@@ -757,7 +852,7 @@ function OverlayIncoming({
                       className={`modal-input modal-select ${errors.documentType ? 'error' : ''}`}
                       value={selectedDocType}
                       onChange={handleDocTypeChange}
-                      disabled={viewMode}
+                      disabled={isReadOnly}
                     >
                       <option value="">Select Document Type</option>
                       {selectedDocType &&
@@ -787,12 +882,12 @@ function OverlayIncoming({
                       value={formData.time}
                       onChange={handleTimeChange}
                       className="modal-input modal-select"
-                      disabled={viewMode}
+                      disabled={isReadOnly}
                     >
                       <option value="">-</option>
                       <option value="AM">AM</option>
                       <option value="PM">PM</option>
-                      <option value="PM_Late">PM Late</option>
+                      <option value="PM Late">PM Late</option>
                     </select>
                   </div>
 
@@ -804,7 +899,7 @@ function OverlayIncoming({
                       value={formData.route}
                       onChange={handleRouteChange}
                       className="modal-input modal-select"
-                      disabled={viewMode}
+                      disabled={isReadOnly}
                     >
                       <option value="">Select Route</option>
                       {routes.map((r) => (
@@ -816,7 +911,7 @@ function OverlayIncoming({
                   </div>
 
                   {/* Custom Document Type Input (col-span-2 if active) */}
-                  {showCustomDocType && !viewMode && (
+                  {showCustomDocType && !isReadOnly && (
                     <div className="md:col-span-2 p-3 bg-white border border-slate-100 rounded-xl space-y-2">
                       <label className="modal-label">Custom Document Type</label>
                       <div className="flex items-center gap-2">
@@ -883,6 +978,11 @@ function OverlayIncoming({
                     const meta = ACTION_META[entry.action] || { label: entry.action, color: 'bg-slate-100 text-slate-600' };
                     const changes = entry.changes || {};
                     const changeKeys = Object.keys(changes);
+                    const visibleKeys = changeKeys.filter(k => {
+                      if (k === 'processedbyid' || k === 'status') return false;
+                      const c = changes[k];
+                      return entry.action !== 'CREATE' || (c.new !== null && c.new !== '' && c.new !== undefined);
+                    });
                     return (
                       <div key={entry.auditid} className="flex gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-white hover:shadow-sm transition-all">
                         <div className="flex-shrink-0 w-1.5 rounded-full self-stretch" style={{ background: meta.color.includes('emerald') ? '#10b981' : meta.color.includes('blue') ? '#3b82f6' : meta.color.includes('amber') ? '#f59e0b' : meta.color.includes('teal') ? '#14b8a6' : '#a855f7' }} />
@@ -894,12 +994,9 @@ function OverlayIncoming({
                             )}
                             <span className="text-[10px] text-slate-400 ml-auto">{formatAuditDate(entry.changedat)}</span>
                           </div>
-                          {changeKeys.length > 0 && (
+                          {visibleKeys.length > 0 && entry.action !== 'OBLIGATED' && entry.action !== 'OBLIGATE' && entry.action !== 'REVIEWED' && entry.action !== 'ROUTED' && (
                             <div className="mt-1.5 space-y-0.5">
-                              {changeKeys.filter(k => {
-                                const c = changes[k];
-                                return entry.action !== 'CREATE' || (c.new !== null && c.new !== '' && c.new !== undefined);
-                              }).map(field => {
+                              {visibleKeys.map(field => {
                                 const c = changes[field];
                                 const label = FIELD_LABELS[field] || field;
                                 if (entry.action === 'CREATE') {
@@ -933,9 +1030,50 @@ function OverlayIncoming({
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50/60 border-t border-slate-100 flex items-center justify-end gap-3 flex-shrink-0">
           <button className="modal-cancel-btn" onClick={onClose}>
-            {viewMode ? 'Close' : 'Cancel'}
+            {isReadOnly ? 'Close' : 'Cancel'}
           </button>
-          {!viewMode && (
+          
+          {editingDoc && (() => {
+            const hasObligated = auditTrail.some(e => e.action === 'OBLIGATED' || e.action === 'OBLIGATE');
+            const hasReviewed = auditTrail.some(e => e.action === 'REVIEWED');
+            const hasRouted = auditTrail.some(e => e.action === 'ROUTED');
+            
+            if (hasRouted) return null; // Hide after routing
+
+            let actionText = 'Obligate';
+            if (hasReviewed) actionText = 'Route';
+            else if (hasObligated) actionText = 'Review';
+
+            return (
+              <button
+                className="modal-submit-btn text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #0b4c95 0%, #1460A2 100%)',
+                  boxShadow: '0 4px 12px rgba(11,76,149,0.25)',
+                }}
+                onClick={() => handleWorkflowAction(actionText)}
+                type="button"
+              >
+                {actionText}
+              </button>
+            );
+          })()}
+
+          {editingDoc && !isFormEnabled && !viewMode && (
+            <button
+              className="px-5 py-2 text-sm font-bold rounded-xl text-white shadow-md transition-all hover:-translate-y-[1px]"
+              style={{
+                background: 'linear-gradient(135deg, #475569 0%, #334155 100%)',
+                boxShadow: '0 4px 12px rgba(71,85,105,0.25)',
+              }}
+              onClick={() => setIsFormEnabled(true)}
+              type="button"
+            >
+              Update
+            </button>
+          )}
+
+          {!isReadOnly && (
             <button
               className="modal-submit-btn text-white"
               style={{
@@ -970,7 +1108,7 @@ function OverlayIncoming({
                   Saving...
                 </>
               ) : editMode ? (
-                'Update'
+                'Save Changes'
               ) : (
                 'Submit Record'
               )}
@@ -983,3 +1121,4 @@ function OverlayIncoming({
 }
 
 export default OverlayIncoming;
+

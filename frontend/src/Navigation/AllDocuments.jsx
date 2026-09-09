@@ -245,8 +245,8 @@ function AllDocs() {
     dateReleased: [],
     daysProcessed: '',
     route: [],
+    status: [],
     remarks: '',
-    processedBy: [],
     payee: [],
     seriesNo: '',
   });
@@ -420,6 +420,9 @@ function AllDocs() {
         calcnetworkdays: doc.calcnetworkdays !== null && doc.calcnetworkdays !== undefined ? Number(doc.calcnetworkdays) : null,
         networkdaysremarks: doc.networkdaysremarks || '-',
         deducteddays: doc.deducteddays !== null ? Number(doc.deducteddays) : 0,
+        obligated_at: doc.obligated_at,
+        obligatedbyid: doc.obligatedbyid,
+        status: doc.status || '-',
       }));
       const filtered = transformedDocuments
         .filter((doc) => !doc.archiveStatus)
@@ -478,6 +481,8 @@ function AllDocs() {
       particulars: doc.particulars === '-' ? '' : doc.particulars,
       queueNo: doc.queueNo === '-' ? '' : doc.queueNo,
       include_friday: doc.include_friday,
+      obligated_at: doc.obligated_at,
+      obligatedbyid: doc.obligatedbyid,
     });
 
     setIsViewMode(false);
@@ -633,48 +638,6 @@ function AllDocs() {
     }
   };
 
-  const handleRouteUpdate = async (docId, newRoute) => {
-    setUpdatingRouteId(docId);
-    try {
-      const response = await fetch(`${API_URL}/api/documents/${docId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ route: newRoute }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update route');
-      }
-
-      setDocuments((prevDocs) =>
-        prevDocs.map((doc) =>
-          doc.id === docId ? { ...doc, route: newRoute || '-' } : doc,
-        ),
-      );
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Route Updated',
-        text: 'Routed To has been updated.',
-        timer: 1200,
-        showConfirmButton: false,
-        customClass: { popup: 'swal2-minimalist' },
-      });
-    } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Failed to Update',
-        text: error.message || 'Failed to update route.',
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: { popup: 'swal2-minimalist' },
-      });
-    } finally {
-      setUpdatingRouteId(null);
-    }
-  };
-
   const filteredDocuments = documents.filter((doc) => {
     const docDate = new Date(doc.dateSent);
     const search = searchTerm.toLowerCase();
@@ -739,14 +702,18 @@ function AllDocs() {
         (formatRemarks(doc.networkdaysremarks) || '')
           .toLowerCase()
           .includes(columnFilters.remarks.toLowerCase())) &&
-      (columnFilters.processedBy.length === 0 ||
-        columnFilters.processedBy.includes(doc.processedBy)) &&
+      (columnFilters.status.length === 0 ||
+        columnFilters.status.includes(doc.status)) &&
       (columnFilters.payee.length === 0 ||
         columnFilters.payee.includes(doc.payee));
 
     const matchesTab =
       activeTab === 'All' ||
-      doc.documentDirection?.toLowerCase() === activeTab.toLowerCase();
+      (activeTab === 'Incoming' && doc.documentDirection?.toLowerCase() === 'incoming' && !['For Obligation', 'For Review', 'For Routing', 'Routed'].includes(doc.status)) ||
+      (activeTab === 'Outgoing' && doc.documentDirection?.toLowerCase() === 'outgoing') ||
+      (activeTab === 'For Obligations' && doc.status === 'For Obligation') ||
+      (activeTab === 'For Review' && doc.status === 'For Review') ||
+      (activeTab === 'For Routing' && doc.status === 'For Routing');
 
     return matchesSearch && matchesMonth && matchesYear && matchesColumnFilters && matchesTab;
   });
@@ -862,6 +829,7 @@ function AllDocs() {
       'Gross Amount',
       'Particulars',
       'Routed To',
+      'Status',
       'Remarks',
     ];
     worksheet.addRow(headers);
@@ -916,6 +884,7 @@ function AllDocs() {
           doc.amount !== null && doc.amount !== undefined ? Number(doc.amount) : '-',
           doc.particulars || '-',
           doc.route?.replace(/_/g, ' ') || '-',
+          doc.status || '-',
           doc.remarks && doc.remarks !== '-' ? doc.remarks : (doc.networkdaysremarks && doc.networkdaysremarks !== '-' ? formatRemarks(doc.networkdaysremarks) : '-'),
         ];
         const row = worksheet.addRow(rowValues);
@@ -1116,7 +1085,7 @@ function AllDocs() {
     timeReceived: [...new Set(documents.map((d) => d.time))].filter((v) => v && v !== '-').sort(),
     dateReleased: [...new Set(documents.map((d) => formatDateOnly(d.dateReceive)))].filter((v) => v !== '-').sort(),
     route: [...new Set(documents.map((d) => d.route))].filter((v) => v && v !== '-').sort(),
-    processedBy: [...new Set(documents.map((d) => d.processedBy))].filter((v) => v && v !== '-').sort(),
+    status: [...new Set(documents.map((d) => d.status))].filter((v) => v && v !== '-').sort(),
   };
 
   const selectFilterClass =
@@ -1170,8 +1139,8 @@ function AllDocs() {
         </div>
       </div>
  
-      <div className="flex border-b border-slate-200">
-        {['All Records', 'Incoming', 'Processed Documents', 'Archived Documents'].map((tab) => {
+      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide">
+        {['All Records', 'Incoming', 'For Obligations', 'For Review', 'For Routing', 'Processed Documents', 'Archived Documents'].map((tab) => {
           const tabValue = tab === 'All Records' ? 'All' : tab;
           return (
             <button
@@ -1201,6 +1170,12 @@ function AllDocs() {
                 <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">
                   {activeTab === 'Incoming'
                     ? 'Incoming Records'
+                    : activeTab === 'For Obligations'
+                    ? 'For Obligations'
+                    : activeTab === 'For Review'
+                    ? 'For Review'
+                    : activeTab === 'For Routing'
+                    ? 'For Routing'
                     : activeTab === 'Outgoing'
                     ? 'Outgoing Records'
                     : 'All Records'}
@@ -1208,14 +1183,20 @@ function AllDocs() {
                 <p className="text-xs text-slate-400 mt-0.5 font-medium font-sans">
                   {activeTab === 'Incoming'
                     ? 'Track incoming business turnaround times, calculate network days, and manage exceptions'
+                    : activeTab === 'For Obligations'
+                    ? 'Documents currently waiting for obligation'
+                    : activeTab === 'For Review'
+                    ? 'Documents currently under review'
+                    : activeTab === 'For Routing'
+                    ? 'Documents ready to be routed'
                     : activeTab === 'Outgoing'
                     ? 'Track outgoing business turnaround times, calculate network days, and manage exceptions'
                     : 'Track all business turnaround times, calculate network days, and manage exceptions'}
                 </p>
               </div>
-              {activeTab === 'Incoming' && (
+              {['Incoming', 'For Obligations', 'For Review', 'For Routing'].includes(activeTab) && (
                 <div className="bg-sky-50 border border-sky-100 rounded-xl px-4 py-2 flex flex-col justify-center items-center shadow-3xs">
-                  <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">Incoming</span>
+                  <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">{activeTab}</span>
                   <span className="text-sm font-extrabold text-sky-800 mt-0.5">
                     {filteredDocuments.length} Documents
                   </span>
@@ -1357,12 +1338,12 @@ function AllDocs() {
               widthClass="w-36"
             />
 
-            {/* Processed By */}
+            {/* Status */}
             <MultiSelectDropdown
-              label="Processed By"
-              options={uniqueValues.processedBy}
-              selected={columnFilters.processedBy}
-              onChange={(val) => setColumnFilters({ ...columnFilters, processedBy: val })}
+              label="Status"
+              options={uniqueValues.status}
+              selected={columnFilters.status}
+              onChange={(val) => setColumnFilters({ ...columnFilters, status: val })}
               widthClass="w-40"
             />
 
@@ -1381,7 +1362,7 @@ function AllDocs() {
                     dateReleased: [],
                     daysProcessed: '',
                     route: [],
-                    processedBy: [],
+                    status: [],
                     payee: [],
                     seriesNo: '',
                     remarks: '',
@@ -1473,21 +1454,21 @@ function AllDocs() {
                       </div>
                     </th>
                     <th
-                      className="w-[11%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
+                      className="w-[11%] text-left py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
                       onClick={() => requestSort('route')}
                     >
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-start gap-1">
                         <span>Routed To</span>
                         {renderSortIcon('route')}
                       </div>
                     </th>
                     <th
                       className="w-[11%] py-3 cursor-pointer select-none hover:bg-slate-50 transition-colors"
-                      onClick={() => requestSort('processedBy')}
+                      onClick={() => requestSort('status')}
                     >
                       <div className="flex items-center gap-1">
-                        <span>Processed By</span>
-                        {renderSortIcon('processedBy')}
+                        <span>Status</span>
+                        {renderSortIcon('status')}
                       </div>
                     </th>
                     <th className="w-[10%] text-center py-3 select-none">
@@ -1545,6 +1526,8 @@ function AllDocs() {
                       (adminDirection === 'outgoing' &&
                         direction !== 'outgoing');
 
+                    const isIncoming = doc.documentDirection?.toLowerCase() === 'incoming';
+
                     const isTimeSelectDisabled =
                       archivingId === doc.id ||
                       updatingTimeId === doc.id ||
@@ -1552,6 +1535,7 @@ function AllDocs() {
 
                     const isDateReleasedEditable =
                       !doc.archiveStatus &&
+                      !isIncoming &&
                       (doc.dateReceive === '-' || !doc.dateReceive);
 
                     return (
@@ -1615,7 +1599,7 @@ function AllDocs() {
                               <option value="">-</option>
                               <option value="AM">AM</option>
                               <option value="PM">PM</option>
-                              <option value="PM_Late">PM Late</option>
+                              <option value="PM Late">PM Late</option>
                             </select>
                             {updatingTimeId === doc.id && (
                               <svg
@@ -1685,52 +1669,13 @@ function AllDocs() {
                                ? Number(doc.calcnetworkdays).toFixed(1)
                                : '-')}
                         </td>
-                        <td className="text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <select
-                              value={doc.route === '-' ? '' : doc.route}
-                              onChange={(e) =>
-                                handleRouteUpdate(doc.id, e.target.value)
-                              }
-                              disabled={isTimeSelectDisabled || updatingRouteId === doc.id}
-                              className={`h-8 w-32 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 px-2 outline-none transition-all duration-200 focus:border-[#0b4c95] focus:ring-2 focus:ring-sky-500/10 ${
-                                isTimeSelectDisabled || updatingRouteId === doc.id
-                                  ? 'bg-slate-50/50 text-slate-400 cursor-not-allowed border-slate-100'
-                                  : 'cursor-pointer hover:border-slate-300'
-                              }`}
-                            >
-                              <option value="">-</option>
-                              {routes.map((r) => (
-                                <option key={r.routeid} value={r.routename}>
-                                  {r.routename}
-                                </option>
-                              ))}
-                            </select>
-                            {updatingRouteId === doc.id && (
-                              <svg
-                                className="animate-spin h-3.5 w-3.5 text-sky-700"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                ></circle>
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8v8z"
-                                ></path>
-                              </svg>
-                            )}
+                        <td className="text-left">
+                          <div className="flex items-center justify-start">
+                            <span className="font-semibold text-slate-700 text-xs text-left">{doc.route || '-'}</span>
                           </div>
                         </td>
                         <td className="font-semibold text-slate-700 text-xs max-w-[120px] truncate">
-                          {doc.processedBy || '-'}
+                          {doc.status || '-'}
                         </td>
                         <td>
                           <div className="flex items-center justify-center gap-1">

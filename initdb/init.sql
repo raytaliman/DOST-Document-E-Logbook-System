@@ -38,7 +38,8 @@ CREATE TABLE tbldocuments (
   calcnetworkdays INTEGER DEFAULT 0,
   daysprocessed NUMERIC(10,2) DEFAULT 0.00,
   archivedate VARCHAR(50),
-  archivedby VARCHAR(50)
+  archivedby VARCHAR(50),
+  status VARCHAR(50) DEFAULT 'For Obligation'
 );
 
 CREATE TABLE tblholidays (

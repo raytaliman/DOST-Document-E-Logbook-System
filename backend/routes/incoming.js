@@ -26,34 +26,76 @@ module.exports = (app, io) => {
       // Sanitize enum values — pass null instead of empty string to avoid cast errors
       const safeTime = (time && time.trim() !== '' && time.trim() !== '-') ? time.trim() : null;
       const safeRoute = (route && route.trim() !== '' && route.trim() !== '-') ? route.trim() : null;
-      const newRecordRes = await pool.query(
-        `INSERT INTO tbldocuments 
-         (dtsno, documenttype, documentdirection, datesent, datereleased, time, route, remarks, networkdaysremarks, calcnetworkdays, deducteddays, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno)
-         VALUES ($1, $2, $3, $4, $5, $6::time_enum, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-         RETURNING *`,
-        [
-          formattedDtsNo,
-          documenttype?.trim() || '-',
-          'incoming',
-          manilaTime,
-          null,
-          safeTime,
-          safeRoute,
-          null,
-          null,
-          0,
-          0,
-          false,
-          processedbyid ? parseInt(processedbyid) : null,
-          payee?.trim() || null,
-          amount ? parseFloat(amount) : null,
-          seriesno?.trim() || null,
-          particulars?.trim() || null,
-          queueno?.trim() || null
-        ]
-      );
-      res.status(201).json(newRecordRes.rows[0]);
-      io.emit('documents_updated');
+      
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const newRecordRes = await client.query(
+          `INSERT INTO tbldocuments 
+           (dtsno, documenttype, documentdirection, datesent, datereleased, time, route, remarks, networkdaysremarks, calcnetworkdays, deducteddays, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno, status)
+           VALUES ($1, $2, $3, $4, $5, $6::time_enum, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+           RETURNING *`,
+          [
+            formattedDtsNo,
+            documenttype?.trim() || '-',
+            'incoming',
+            manilaTime,
+            null,
+            safeTime,
+            safeRoute,
+            null,
+            null,
+            0,
+            0,
+            false,
+            processedbyid ? parseInt(processedbyid) : null,
+            payee?.trim() || null,
+            amount ? parseFloat(amount) : null,
+            seriesno?.trim() || null,
+            particulars?.trim() || null,
+            queueno?.trim() || null,
+            'Incoming'
+          ]
+        );
+        
+        const newDoc = newRecordRes.rows[0];
+        
+        // Resolve admin name for audit log
+        let creatorName = 'System';
+        if (newDoc.processedbyid) {
+          const adminRes = await client.query('SELECT adminname FROM tbladmin WHERE adminid = $1', [newDoc.processedbyid]);
+          if (adminRes.rows[0]) creatorName = adminRes.rows[0].adminname;
+        }
+
+        // Add audit trail entry
+        const changes = {
+          dtsno: { old: null, new: newDoc.dtsno },
+          documenttype: { old: null, new: newDoc.documenttype },
+          route: { old: null, new: newDoc.route },
+          time: { old: null, new: newDoc.time },
+          datesent: { old: null, new: manilaTime },
+          processedbyid: { old: null, new: newDoc.processedbyid },
+          payee: { old: null, new: newDoc.payee },
+          amount: { old: null, new: newDoc.amount },
+          seriesno: { old: null, new: newDoc.seriesno },
+          particulars: { old: null, new: newDoc.particulars },
+          queueno: { old: null, new: newDoc.queueno }
+        };
+
+        await client.query(
+          'INSERT INTO tblaudit (documentid, action, changedby, changes) VALUES ($1, $2, $3, $4)',
+          [newDoc.documentid, 'CREATE', creatorName, JSON.stringify(changes)]
+        );
+
+        await client.query('COMMIT');
+        res.status(201).json(newDoc);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       console.error('Failed to create incoming record:', error);
       res.status(500).json({ error: 'Failed to create incoming record', details: error.message, code: error.code });

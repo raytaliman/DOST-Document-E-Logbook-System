@@ -31,7 +31,7 @@ module.exports = (app, io) => {
     try {
       const { direction } = req.query;
       let query = `
-        SELECT d.documentid, d.dtsno, d.documenttype, d.datesent, d.datereleased, d.time, d.route, d.remarks, d.isarchive, d.documentdirection, d.calcnetworkdays, d.deducteddays, d.networkdaysremarks, d.daysprocessed, d.processedbyid, a.adminname AS processedby, d.payee, d.amount, d.seriesno, d.particulars, d.queueno, d.include_friday 
+        SELECT d.documentid, d.dtsno, d.documenttype, d.datesent, d.datereleased, d.time, d.route, d.remarks, d.isarchive, d.documentdirection, d.calcnetworkdays, d.deducteddays, d.networkdaysremarks, d.daysprocessed, d.processedbyid, a.adminname AS processedby, d.payee, d.amount, d.seriesno, d.particulars, d.queueno, d.include_friday, d.obligatedbyid, d.obligated_at, d.status
         FROM tbldocuments d
         LEFT JOIN tbladmin a ON d.processedbyid = a.adminid
       `;
@@ -78,8 +78,8 @@ module.exports = (app, io) => {
 
         const result = await client.query(
           `INSERT INTO tbldocuments 
-            (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno, include_friday) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
+            (dtsno, documenttype, route, remarks, documentdirection, datesent, datereleased, time, isarchive, processedbyid, payee, amount, seriesno, particulars, queueno, include_friday, status) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
             RETURNING *`,
           [
             dtsno.trim().toUpperCase(),
@@ -97,7 +97,8 @@ module.exports = (app, io) => {
             seriesno?.trim() || null,
             particulars?.trim() || null,
             queueno?.trim() || null,
-            include_friday === undefined ? true : (include_friday === true || include_friday === 'true')
+            include_friday === undefined ? true : (include_friday === true || include_friday === 'true'),
+            datereleased ? 'Routed' : 'For Obligation'
           ]
         );
 
@@ -154,16 +155,16 @@ module.exports = (app, io) => {
     try {
         // Time-only quick edit
         if (Object.keys(req.body).length === 1 && typeof time !== 'undefined') {
-            const timeValue = time === '' || time === '-' ? null : time;
+            const timeValue = time === '' || time === '-' ? null : time.replace('_', ' ');
             const client = await pool.connect();
             try {
               await client.query('BEGIN');
               const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
               const oldDoc = oldRes.rows[0];
               const routeValue = oldDoc.route;
-              const directionValue = ((timeValue && timeValue !== '-') || (routeValue && routeValue !== '-')) ? 'outgoing' : 'incoming';
+              const directionValue = (routeValue && routeValue !== '-') ? 'outgoing' : 'incoming';
               const result = await client.query(
-                'UPDATE tbldocuments SET time = $1, documentdirection = $2 WHERE documentid = $3 RETURNING *',
+                'UPDATE tbldocuments SET time = $1::text::time_enum, documentdirection = $2::text::documentdirection_enum WHERE documentid = $3 RETURNING *',
                 [timeValue, directionValue, parseInt(id)]
               );
               const newDoc = result.rows[0];
@@ -183,7 +184,8 @@ module.exports = (app, io) => {
               return res.json(newDoc);
             } catch (err) {
               await client.query('ROLLBACK');
-              throw err;
+              console.error(err);
+              return res.status(500).json({ error: err.message, stack: err.stack });
             } finally {
               client.release();
             }
@@ -198,10 +200,10 @@ module.exports = (app, io) => {
               const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
               const oldDoc = oldRes.rows[0];
               const timeValue = oldDoc.time;
-              const directionValue = ((timeValue && timeValue !== '-') || (routeValue && routeValue !== '-')) ? 'outgoing' : 'incoming';
+              const directionValue = (routeValue && routeValue !== '-') ? 'outgoing' : 'incoming';
               const result = await client.query(
-                'UPDATE tbldocuments SET route = $1, documentdirection = $2 WHERE documentid = $3 RETURNING *',
-                [routeValue, directionValue, parseInt(id)]
+                'UPDATE tbldocuments SET route = $1, documentdirection = $2::text::documentdirection_enum, status = $3 WHERE documentid = $4 RETURNING *',
+                [routeValue, directionValue, 'For Routing', parseInt(id)]
               );
               const newDoc = result.rows[0];
               const changes = diffFields(oldDoc, newDoc, ['route', 'documentdirection']);
@@ -220,7 +222,8 @@ module.exports = (app, io) => {
               return res.json(newDoc);
             } catch (err) {
               await client.query('ROLLBACK');
-              throw err;
+              console.error(err);
+              return res.status(500).json({ error: err.message, stack: err.stack });
             } finally {
               client.release();
             }
@@ -234,8 +237,8 @@ module.exports = (app, io) => {
               const oldRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
               const oldDoc = oldRes.rows[0];
               const result = await client.query(
-                'UPDATE tbldocuments SET datereleased = $1 WHERE documentid = $2 RETURNING *',
-                [datereleased, parseInt(id)]
+                'UPDATE tbldocuments SET datereleased = $1, status = $2 WHERE documentid = $3 RETURNING *',
+                [datereleased, 'Routed', parseInt(id)]
               );
               const newDoc = result.rows[0];
               const changes = diffFields(oldDoc, newDoc, ['datereleased']);
@@ -254,7 +257,8 @@ module.exports = (app, io) => {
               return res.json(newDoc);
             } catch (err) {
               await client.query('ROLLBACK');
-              throw err;
+              console.error(err);
+              return res.status(500).json({ error: err.message, stack: err.stack });
             } finally {
               client.release();
             }
@@ -278,7 +282,7 @@ module.exports = (app, io) => {
 
         const remarksValue = remarks?.trim() || null;
         const timeProvided = typeof time !== 'undefined';
-        const timeValue = timeProvided ? (time === '' || time === '-' ? null : time) : undefined;
+        const timeValue = timeProvided ? (time === '' || time === '-' ? null : time.replace('_', ' ')) : undefined;
 
         const client = await pool.connect();
         try {
@@ -296,61 +300,62 @@ module.exports = (app, io) => {
           if (typeof datereleased !== 'undefined') {
               query = `
                   UPDATE tbldocuments 
-                  SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
+                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
                       time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datereleased = $7, datesent = COALESCE($8, datesent),
                       processedbyid = COALESCE($9, processedbyid),
                       payee = $10, amount = $11, seriesno = $12, particulars = $13, queueno = $14,
                       include_friday = $15,
-                      documentdirection = CASE WHEN (CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END IS NOT NULL) OR ($3::text IS NOT NULL AND $3::text <> '' AND $3::text <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
+                      status = CASE WHEN $7::varchar IS NOT NULL AND $7::varchar <> '' AND $7::varchar <> '-' THEN 'Routed' ELSE status END,
+                      documentdirection = CASE WHEN ($3::varchar IS NOT NULL AND $3::varchar <> '' AND $3::varchar <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
                   WHERE documentid = $16 
                   RETURNING *
               `;
               params = [
-                  dtsno.trim().toUpperCase(),
-                  documenttype?.trim() || null,
-                  route.trim(),
+                  dtsno ? String(dtsno).trim().toUpperCase() : null,
+                  documenttype ? String(documenttype).trim() : null,
+                  route ? String(route).trim() : null,
                   remarksValue,
                   timeProvided,
                   timeProvided ? timeValue : null,
                   datereleased,
                   datesentDate,
                   processedbyid ? parseInt(processedbyid) : null,
-                  payee?.trim() || null,
+                  payee ? String(payee).trim() : null,
                   amount ? parseFloat(amount) : null,
-                  seriesno?.trim() || null,
-                  particulars?.trim() || null,
-                  queueno?.trim() || null,
+                  seriesno ? String(seriesno).trim() : null,
+                  particulars ? String(particulars).trim() : null,
+                  queueno ? String(queueno).trim() : null,
                   include_friday === undefined ? true : (include_friday === true || include_friday === 'true'),
                   parseInt(id)
               ];
           } else {
               query = `
                   UPDATE tbldocuments 
-                  SET dtsno = $1, documenttype = $2, route = $3::text::route_enum, remarks = $4,
+                  SET dtsno = $1, documenttype = $2, route = $3, remarks = $4,
                       time = CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END,
                       datesent = COALESCE($7, datesent),
                       processedbyid = COALESCE($8, processedbyid),
                       payee = $9, amount = $10, seriesno = $11, particulars = $12, queueno = $13,
                       include_friday = $14,
-                      documentdirection = CASE WHEN (CASE WHEN $5::boolean THEN $6::text::time_enum ELSE time END IS NOT NULL) OR ($3::text IS NOT NULL AND $3::text <> '' AND $3::text <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
+                      documentdirection = CASE WHEN ($3::varchar IS NOT NULL AND $3::varchar <> '' AND $3::varchar <> '-') THEN 'outgoing'::documentdirection_enum ELSE 'incoming'::documentdirection_enum END
                   WHERE documentid = $15 
                   RETURNING *
               `;
               params = [
-                  dtsno.trim().toUpperCase(),
-                  documenttype?.trim() || null,
-                  route.trim(),
+                  dtsno ? String(dtsno).trim().toUpperCase() : null,
+                  documenttype ? String(documenttype).trim() : null,
+                  route ? String(route).trim() : null,
                   remarksValue,
                   timeProvided,
                   timeProvided ? timeValue : null,
                   datesentDate,
                   processedbyid ? parseInt(processedbyid) : null,
-                  payee?.trim() || null,
+                  payee ? String(payee).trim() : null,
                   amount ? parseFloat(amount) : null,
-                  seriesno?.trim() || null,
-                  particulars?.trim() || null,
-                  queueno?.trim() || null,
+                  seriesno ? String(seriesno).trim() : null,
+                  particulars ? String(particulars).trim() : null,
+                  queueno ? String(queueno).trim() : null,
                   include_friday === undefined ? true : (include_friday === true || include_friday === 'true'),
                   parseInt(id)
               ];
@@ -394,6 +399,105 @@ module.exports = (app, io) => {
             message: error.message, 
             code: error.code 
         });
+    }
+  });
+
+  // Obligate document
+  app.put('/api/documents/:id/obligate', async (req, res) => {
+    const { id } = req.params;
+    const { adminid, adminname, action } = req.body;
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const documentRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+        const document = documentRes.rows[0];
+        if (!document) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        const now = new Date().toISOString();
+        let newStatus = 'For Obligation';
+        if (action === 'REVIEWED') newStatus = 'For Review';
+        
+        const updatedDocRes = await client.query(
+          'UPDATE tbldocuments SET obligatedbyid = $1, obligated_at = $2, status = $3 WHERE documentid = $4 RETURNING *',
+          [adminid ? parseInt(adminid) : null, now, newStatus, parseInt(id)]
+        );
+        
+        await logAudit(client, {
+          documentid: parseInt(id),
+          action: action || 'OBLIGATED',
+          changedby: adminname || 'System',
+          changes: { 
+            obligated_at: { old: document.obligated_at, new: now },
+            status: { old: document.status, new: newStatus }
+          }
+        });
+        
+        await client.query('COMMIT');
+        res.json(updatedDocRes.rows[0]);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        return res.status(500).json({ error: err.message, stack: err.stack });
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Obligate document error:', error);
+      res.status(500).json({ error: 'Database operation failed', message: error.message });
+    }
+  });
+
+  // Route document
+  app.put('/api/documents/:id/route', async (req, res) => {
+    const { id } = req.params;
+    const { route, adminname } = req.body;
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const documentRes = await client.query('SELECT * FROM tbldocuments WHERE documentid = $1', [parseInt(id)]);
+        const document = documentRes.rows[0];
+        if (!document) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        const newStatus = 'For Routing';
+        const directionValue = (route && route !== '-') ? 'outgoing' : 'incoming';
+        const updatedDocRes = await client.query(
+          'UPDATE tbldocuments SET route = $1, status = $2, documentdirection = $3::text::documentdirection_enum WHERE documentid = $4 RETURNING *',
+          [route, newStatus, directionValue, parseInt(id)]
+        );
+        
+        await logAudit(client, {
+          documentid: parseInt(id),
+          action: 'ROUTED',
+          changedby: adminname || 'System',
+          changes: { 
+            route: { old: document.route, new: route },
+            status: { old: document.status, new: newStatus },
+            documentdirection: { old: document.documentdirection, new: directionValue }
+          }
+        });
+        
+        await client.query('COMMIT');
+        res.json(updatedDocRes.rows[0]);
+        io.emit('documents_updated');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        return res.status(500).json({ error: err.message, stack: err.stack });
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Route document error:', error);
+      res.status(500).json({ error: 'Database operation failed', message: error.message });
     }
   });
 
@@ -495,7 +599,7 @@ module.exports = (app, io) => {
   app.get('/api/documents/archived', async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT d.documentid, d.dtsno, d.documenttype, d.datesent, d.datereleased, d.time, d.route, d.remarks, d.archivedate, d.archivedby, d.documentdirection, d.daysprocessed, a.adminname AS processedby, d.payee, d.amount, d.seriesno, d.particulars, d.queueno, d.include_friday 
+        `SELECT d.documentid, d.dtsno, d.documenttype, d.datesent, d.datereleased, d.time, d.route, d.remarks, d.archivedate, d.archivedby, d.documentdirection, d.daysprocessed, a.adminname AS processedby, d.payee, d.amount, d.seriesno, d.particulars, d.queueno, d.include_friday, d.obligatedbyid, d.obligated_at, d.status
          FROM tbldocuments d
          LEFT JOIN tbladmin a ON d.processedbyid = a.adminid
          WHERE d.isarchive = true 

@@ -191,10 +191,10 @@ function Login() {
             </div>
             <div className="space-y-1 text-center">
               <h1 className="text-white text-base font-extrabold tracking-wider">
-                DOST E-LOGBOOK
+                DOST LogIT
               </h1>
               <p className="text-sky-200/80 text-[10px] uppercase font-bold tracking-widest">
-                Budget Document Logging System
+                Logbook and Information Tracker
               </p>
             </div>
           </div>
@@ -207,7 +207,7 @@ function Login() {
               Sign In
             </h2>
             <p className="text-slate-400 text-[11px] mt-1">
-              Access the Budget Document Logging System
+              Access the Logbook and Information Tracker
             </p>
           </div>
 
@@ -313,7 +313,7 @@ function Login() {
               </button>
             </div>
             <p className="text-[9px] text-center text-slate-400 font-semibold mt-3 leading-relaxed">
-              Developed by DOST Ilocos Region - ITSM Unit<br />v2.1
+              Developed by DOST Ilocos Region - ITSM Unit<br />v2.2
             </p>
           </div>
         </div>
